@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:stockflow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: false
+  ai:
+    model:
+      chat: mock
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+
+logging:
+  level:
+    root: WARN
+
+stockflow:
+  scheduling:
+    enabled: false

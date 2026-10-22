@@ -1,0 +1,56 @@
+revenue-default|Show revenue|LAST_30_DAYS||10|get_revenue_summary
+revenue-seven-days|Revenue for the last 7 days|LAST_7_DAYS||10|get_revenue_summary
+revenue-ninety-days|Sales in the last 90 days|LAST_90_DAYS||10|get_revenue_summary
+revenue-this-month|Revenue this month|THIS_MONTH||10|get_revenue_summary
+revenue-last-month|Sales last month|LAST_MONTH||10|get_revenue_summary
+revenue-mtd|Show month to date revenue|THIS_MONTH||10|get_revenue_summary
+revenue-quarter|Business performance last quarter|LAST_90_DAYS||10|get_revenue_summary
+revenue-overview|Give me a business overview|LAST_30_DAYS||10|get_revenue_summary
+revenue-natural|How are we doing?|LAST_30_DAYS||10|get_revenue_summary
+revenue-past-week|Sales for the past week|LAST_7_DAYS||10|get_revenue_summary
+compare-revenue|Compare revenue with the previous period|LAST_30_DAYS||10|compare_revenue
+compare-sales-seven|Compare sales for the last 7 days|LAST_7_DAYS||10|compare_revenue
+compare-orders|Compare orders versus the previous period|LAST_30_DAYS||10|compare_revenue
+compare-aov|Show AOV growth this month|THIS_MONTH||10|compare_revenue
+compare-last-month|Revenue growth last month|LAST_MONTH||10|compare_revenue
+compare-ninety|Revenue change from the previous period for 90 days|LAST_90_DAYS||10|compare_revenue
+compare-vs|Sales vs previous period|LAST_30_DAYS||10|compare_revenue
+compare-prior-month|Compare revenue for the prior month|LAST_MONTH||10|compare_revenue
+trend-default|Show the revenue trend|LAST_30_DAYS||10|get_revenue_trend
+trend-daily|Chart daily revenue|LAST_30_DAYS|DAY|10|get_revenue_trend
+trend-weekly|Show weekly revenue trend for 90 days|LAST_90_DAYS|WEEK|10|get_revenue_trend
+trend-monthly|Graph monthly sales for the last 90 days|LAST_90_DAYS|MONTH|10|get_revenue_trend
+trend-orders|Show orders over time|LAST_30_DAYS||10|get_revenue_trend;get_order_statistics
+trend-visualize|Visualize revenue this month|THIS_MONTH||10|get_revenue_trend
+trend-by-day|Revenue by day last month|LAST_MONTH|DAY|10|get_revenue_trend
+products-default|Show top products|LAST_30_DAYS||10|get_top_selling_products
+products-five|What are my top 5 products this month?|THIS_MONTH||5|get_top_selling_products
+products-ten|Show ten best sellers last month|LAST_MONTH||10|get_top_selling_products
+products-three|Top 3 products by revenue|LAST_30_DAYS||3|get_top_selling_products
+products-week|Best products for the last week|LAST_7_DAYS||10|get_top_selling_products
+products-ninety|Selling products for the last 90 days|LAST_90_DAYS||10|get_top_selling_products
+category-default|Show sales by category|LAST_30_DAYS||10|get_sales_by_category
+category-month|Category performance this month|THIS_MONTH||10|get_sales_by_category
+category-last-month|Revenue by category last month|LAST_MONTH||10|get_sales_by_category
+category-department|Sales by department|LAST_30_DAYS||10|get_sales_by_category
+category-quarter|Category sales last quarter|LAST_90_DAYS||10|get_sales_by_category
+orders-default|How many orders do I have?|LAST_30_DAYS||10|get_order_statistics
+orders-aov|What is average order value?|LAST_30_DAYS||10|get_order_statistics
+orders-units|How many units sold this month?|THIS_MONTH||10|get_order_statistics
+orders-basket|Show basket size for the past week|LAST_7_DAYS||10|get_order_statistics
+orders-last-month|Order statistics last month|LAST_MONTH||10|get_order_statistics
+inventory-default|Show inventory|LAST_30_DAYS||10|get_inventory_summary
+inventory-overview|Give me an inventory overview|LAST_30_DAYS||10|get_inventory_summary
+inventory-reserved|How much stock is reserved?|LAST_30_DAYS||10|get_inventory_summary
+inventory-quarter|Inventory sales velocity for the last 90 days|LAST_90_DAYS||10|get_inventory_summary
+inventory-active|Show active stock this month|THIS_MONTH||10|get_inventory_summary
+risk-default|Which products are at inventory risk?|LAST_30_DAYS||10|get_inventory_risk
+risk-low|Show low stock products|LAST_30_DAYS||10|get_inventory_risk
+risk-out|What is out of stock?|LAST_30_DAYS||10|get_inventory_risk
+risk-cover|Show products with low days of cover|LAST_30_DAYS||10|get_inventory_risk
+risk-reorder|What should I reorder based on stock risk?|LAST_30_DAYS||10|get_inventory_risk
+risk-five|Top 5 products likely to run out|LAST_30_DAYS||5|get_inventory_risk
+risk-summary|Show inventory risk and overview|LAST_30_DAYS||10|get_inventory_risk;get_inventory_summary
+unsupported-weather|What is the weather today?|LAST_30_DAYS||10|
+unsupported-poem|Write a poem about warehouses|LAST_30_DAYS||10|
+unsupported-admin|Delete all products|LAST_30_DAYS||10|

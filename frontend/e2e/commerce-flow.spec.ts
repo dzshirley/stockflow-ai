@@ -1,0 +1,76 @@
+import { expect, test } from '@playwright/test'
+
+test('registers a store and completes the protected commerce workflow', async ({ page }) => {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const email = `e2e-${stamp}@example.com`
+  const sku = `E2E-${stamp}`.slice(0, 80)
+
+  await page.goto('/inventory')
+  await expect(page).toHaveURL(/\/login/)
+
+  await page.getByRole('link', { name: 'Create an account' }).click()
+  await page.getByLabel('Display name').fill('E2E Owner')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill('e2e-secure-password')
+  await page.getByLabel('Store name').fill(`E2E Store ${stamp}`)
+  await page.getByRole('button', { name: 'Create store' }).click()
+  await expect(page.getByRole('heading', { name: /Good to see you/ })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Products' }).click()
+  await page.locator('.page-actions').getByRole('button', { name: 'Add product' }).click()
+  const productDialog = page.getByRole('dialog', { name: 'Add product' })
+  await productDialog.getByLabel('SKU').fill(sku)
+  await productDialog.getByLabel('Category').fill('Albums')
+  await productDialog.getByLabel('Product name').fill('E2E Limited Album')
+  await productDialog.getByLabel('Retail price').fill('29.99')
+  await productDialog.getByLabel('Unit cost').fill('12.50')
+  await productDialog.getByLabel('Initial quantity').fill('5')
+  await productDialog.getByLabel('Reorder point').fill('2')
+  await productDialog.getByRole('button', { name: 'Add product' }).click()
+  await expect(page.getByRole('link', { name: /E2E Limited Album/ })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Inventory' }).click()
+  await expect(page.getByText(sku)).toBeVisible()
+  await page.getByRole('button', { name: 'Adjust' }).click()
+  await page.getByLabel('Available quantity change').fill('2')
+  await page.getByLabel('Reason').fill('E2E shipment receipt')
+  await page.getByRole('button', { name: 'Apply adjustment' }).click()
+  await expect(page.locator('article').filter({ hasText: sku }).getByText('7', { exact: true })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Orders' }).click()
+  await page.locator('.page-actions').getByRole('link', { name: 'Create order' }).click()
+  await page.getByLabel('Product').selectOption({ label: `E2E Limited Album · ${sku.toUpperCase()}` })
+  await page.getByLabel('Quantity').fill('2')
+  await page.getByRole('button', { name: 'Create order' }).click()
+  await expect(page.locator('.page-actions .status-badge')).toHaveText('PENDING PAYMENT')
+  await page.getByRole('button', { name: 'Approve payment' }).click()
+  await expect(page.locator('.page-actions .status-badge')).toHaveText('PAID')
+
+  await page.getByRole('link', { name: 'Analytics' }).click()
+  const kpis = page.getByRole('region', { name: 'Sales key performance indicators' })
+  const revenueKpi = kpis.getByText('Revenue', { exact: true }).locator('..')
+  await expect(revenueKpi).toContainText('$59.98')
+  await expect(kpis.getByText('Paid orders', { exact: true }).locator('..')).toContainText('1')
+  await expect(kpis.getByText('Units sold', { exact: true }).locator('..')).toContainText('2')
+  await expect(page.getByRole('link', { name: /E2E Limited Album/ }).first()).toBeVisible()
+
+  await page.getByRole('link', { name: 'AI assistant' }).click()
+  await page.getByLabel('Ask about your business data').fill('Show revenue for the last 30 days')
+  await page.getByRole('button', { name: 'Analyze' }).click()
+  await expect(page.getByText(/Verified revenue was/)).toBeVisible()
+  await expect(page.getByText('Revenue', { exact: true }).locator('..')).toContainText('$59.98')
+  await page.getByLabel('Ask about your business data').fill('Visualize that daily')
+  await page.getByRole('button', { name: 'Analyze' }).click()
+  await expect(page.getByRole('heading', { name: 'Revenue trend' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Business insights' }).click()
+  await page.getByRole('button', { name: 'Why did revenue change last month?' }).click()
+  await page.getByRole('button', { name: 'Generate report' }).click()
+  await expect(page.getByRole('heading', { name: 'Verified findings' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Verified metrics' })).toContainText('$59.98')
+  await expect(page.getByText('Revenue change decomposition')).toBeVisible()
+  await expect(page.getByText(/Advisory only; no operation is executed/i)).toBeVisible()
+
+  await page.getByLabel('Log out').click()
+  await expect(page).toHaveURL(/\/login/)
+})

@@ -1,0 +1,551 @@
+openapi: 3.1.0
+info:
+  title: StockFlow AI Analytics API
+  version: 0.6.0
+  description: Authenticated deterministic analytics, AI Data Analyst, and evidence-backed Business Analysis reports.
+servers:
+  - url: /api
+security:
+  - sessionCookie: []
+paths:
+  /analytics/overview:
+    get:
+      operationId: getRevenueSummary
+      summary: Revenue, order, AOV, units, and optional previous-period comparison
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: comparePreviousPeriod
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Overview for the authenticated store
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Overview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /analytics/orders/summary:
+    get:
+      operationId: getOrderStatistics
+      summary: Alias of the overview contract for future typed tool calling
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: comparePreviousPeriod
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Order and revenue statistics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Overview' }
+  /analytics/revenue/trend:
+    get:
+      operationId: getRevenueTrend
+      summary: Gap-filled paid-revenue time series
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: interval
+          in: query
+          schema: { type: string, enum: [DAY, WEEK, MONTH] }
+      responses:
+        '200':
+          description: Revenue series
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, interval, currency, points]
+                properties:
+                  period: { $ref: '#/components/schemas/Period' }
+                  interval: { type: string, enum: [DAY, WEEK, MONTH] }
+                  currency: { type: string, pattern: '^[A-Z]{3}$' }
+                  points:
+                    type: array
+                    items:
+                      type: object
+                      required: [bucketStart, revenue, orders, unitsSold]
+                      properties:
+                        bucketStart: { type: string, format: date }
+                        revenue: { type: number, multipleOf: 0.0001 }
+                        orders: { type: integer, format: int64 }
+                        unitsSold: { type: integer, format: int64 }
+  /analytics/products/top:
+    get:
+      operationId: getTopProducts
+      summary: Products ranked by historical line revenue
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200':
+          description: Product ranking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RankedPerformance' }
+  /analytics/categories/performance:
+    get:
+      operationId: getSalesByCategory
+      summary: Revenue and units grouped by saved order-line category
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Category performance
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RankedPerformance' }
+  /analytics/inventory/summary:
+    get:
+      operationId: getInventorySummary
+      summary: Current stock totals plus selected-period sales velocity
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Inventory summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /analytics/inventory/risk:
+    get:
+      operationId: getInventoryRisk
+      summary: Product-level stock, velocity, and days-of-cover risk
+      parameters:
+        - $ref: '#/components/parameters/Preset'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Inventory risk ranking
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /ai/query:
+    post:
+      operationId: queryAiAnalytics
+      summary: Ask an analytics question and persist the turn
+      description: Requires the authenticated session and CSRF token. Authoritative values are assembled from tool results.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiQueryRequest' }
+      responses:
+        '200':
+          description: Validated structured response
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Conversation is absent or not owned by this user/store
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: Archived or concurrently changed conversation
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: Configured model provider is unavailable
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /ai/conversations:
+    get:
+      operationId: listAiConversations
+      summary: List active conversations owned by the current user and store
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Newest conversations first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiConversationList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /ai/conversations/{conversationId}:
+    get:
+      operationId: getAiConversation
+      summary: Read an owned conversation and its persisted structured responses
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Conversation detail, capped at 200 messages
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiConversationDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Conversation is absent or not owned by this user/store
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /business-analysis/reports:
+    post:
+      operationId: createBusinessAnalysisReport
+      summary: Generate and persist an evidence-backed report
+      description: Requires CSRF and an idempotency key. The server derives store/user ownership and constructs authoritative metrics and evidence.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BusinessReportCreateRequest' }
+      responses:
+        '200':
+          description: Completed report or idempotent replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BusinessReportDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: Idempotency-key conflict or invalid persisted document
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502':
+          description: Malformed provider response
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: Provider unavailable; failed metadata remains persisted
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      operationId: listBusinessAnalysisReports
+      summary: List reports authorized for the current store role
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED] }
+        - name: type
+          in: query
+          schema: { type: string, enum: [REVENUE_INVESTIGATION, INVENTORY_RISK, SCENARIO_ANALYSIS] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: ADMIN receives store reports; STAFF receives only self-created reports
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/BusinessReportSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /business-analysis/reports/{reportId}:
+    get:
+      operationId: getBusinessAnalysisReport
+      summary: Retrieve authorized report metadata and validated detail
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Report detail; report is null for non-completed lifecycle states
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BusinessReportDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Report is absent or inaccessible to the authenticated user/store
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+  parameters:
+    CsrfToken:
+      name: X-XSRF-TOKEN
+      in: header
+      required: true
+      schema: { type: string }
+    Preset:
+      name: preset
+      in: query
+      schema:
+        type: string
+        enum: [LAST_7_DAYS, LAST_30_DAYS, LAST_90_DAYS, THIS_MONTH, LAST_MONTH, CUSTOM]
+        default: LAST_30_DAYS
+    StartDate:
+      name: startDate
+      in: query
+      description: Required only for CUSTOM.
+      schema: { type: string, format: date }
+    EndDate:
+      name: endDateExclusive
+      in: query
+      description: Required only for CUSTOM; excluded from the interval.
+      schema: { type: string, format: date }
+  responses:
+    BadRequest:
+      description: Invalid or oversized range, parameter, or limit
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Authentication is required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Period:
+      type: object
+      required: [startDate, endDateExclusive, timeZone]
+      properties:
+        startDate: { type: string, format: date }
+        endDateExclusive: { type: string, format: date }
+        timeZone: { type: string, example: America/New_York }
+    SalesMetrics:
+      type: object
+      required: [revenue, currency, orders, unitsSold]
+      properties:
+        revenue: { type: number, multipleOf: 0.0001 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        orders: { type: integer, format: int64 }
+        averageOrderValue: { type: [number, 'null'], multipleOf: 0.0001 }
+        unitsSold: { type: integer, format: int64 }
+    Overview:
+      type: object
+      required: [period, metrics]
+      properties:
+        period: { $ref: '#/components/schemas/Period' }
+        metrics: { $ref: '#/components/schemas/SalesMetrics' }
+        comparison:
+          type: [object, 'null']
+          additionalProperties: true
+    RankedPerformance:
+      type: object
+      required: [period, currency, items]
+      properties:
+        period: { $ref: '#/components/schemas/Period' }
+        currency: { type: string }
+        items: { type: array, items: { type: object, additionalProperties: true } }
+    AiQueryRequest:
+      type: object
+      required: [question]
+      properties:
+        conversationId: { type: [string, 'null'], format: uuid }
+        question: { type: string, minLength: 1, maxLength: 4000 }
+    AiMetric:
+      type: object
+      required: [key, label, value, unit, comparable]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        value: { type: number }
+        unit: { type: string }
+        comparisonValue: { type: [number, 'null'] }
+        changePercent: { type: [number, 'null'] }
+        comparable: { type: boolean }
+    AiChart:
+      type: object
+      required: [id, type, title, xKey, series, data]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [LINE, BAR] }
+        title: { type: string }
+        xKey: { type: string }
+        series:
+          type: array
+          items:
+            type: object
+            required: [key, label, unit]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              unit: { type: string }
+        data:
+          type: array
+          items: { type: object, additionalProperties: true }
+    AiTable:
+      type: object
+      required: [id, title, columns, rows]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        columns: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+    AiEvidence:
+      type: object
+      required: [toolExecutionId, toolName, description, period]
+      properties:
+        toolExecutionId: { type: string, format: uuid }
+        toolName: { type: string }
+        description: { type: string }
+        period: { $ref: '#/components/schemas/Period' }
+    AiResponse:
+      type: object
+      required: [conversationId, messageId, responseType, summary, metrics, charts, tables, evidence, assumptions, limitations, appliedFilters, provider]
+      properties:
+        conversationId: { type: string, format: uuid }
+        messageId: { type: string, format: uuid }
+        responseType: { type: string, enum: [ANALYTICS, CLARIFICATION, UNSUPPORTED] }
+        summary: { type: string }
+        metrics: { type: array, items: { $ref: '#/components/schemas/AiMetric' } }
+        charts: { type: array, items: { $ref: '#/components/schemas/AiChart' } }
+        tables: { type: array, items: { $ref: '#/components/schemas/AiTable' } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/AiEvidence' } }
+        assumptions: { type: array, items: { type: string } }
+        limitations: { type: array, items: { type: string } }
+        appliedFilters:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: { type: string }
+              value: { type: string }
+        provider: { type: string, enum: [mock, openai] }
+    AiConversationSummary:
+      type: object
+      required: [id, title, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AiConversationList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AiConversationSummary' } }
+    AiConversationDetail:
+      allOf:
+        - $ref: '#/components/schemas/AiConversationSummary'
+        - type: object
+          required: [messages]
+          properties:
+            messages:
+              type: array
+              items:
+                type: object
+                required: [id, role, content, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  role: { type: string, enum: [USER, ASSISTANT] }
+                  content: { type: string }
+                  createdAt: { type: string, format: date-time }
+                  response:
+                    anyOf:
+                      - $ref: '#/components/schemas/AiResponse'
+                      - type: 'null'
+    BusinessReportCreateRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 1000 }
+        analysisType: { type: string, enum: [AUTO, REVENUE_INVESTIGATION, INVENTORY_RISK, SCENARIO_ANALYSIS], default: AUTO }
+        preset: { type: string, enum: [LAST_7_DAYS, LAST_30_DAYS, LAST_90_DAYS, THIS_MONTH, LAST_MONTH, CUSTOM], default: LAST_30_DAYS }
+        startDate: { type: string, format: date }
+        endDateExclusive: { type: string, format: date }
+        scenarios:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [type, changePercent]
+            properties:
+              type: { type: string, enum: [UNIT_SALES_CHANGE, PRICE_CHANGE, DISCOUNT_CHANGE, SALES_VELOCITY_CHANGE] }
+              changePercent: { type: number, minimum: -90, maximum: 1000 }
+    BusinessReportSummary:
+      type: object
+      required: [id, reportType, title, status, periodStart, periodEndExclusive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        reportType: { type: string, enum: [REVENUE_INVESTIGATION, INVENTORY_RISK, SCENARIO_ANALYSIS] }
+        title: { type: string }
+        status: { type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED] }
+        periodStart: { type: string, format: date }
+        periodEndExclusive: { type: string, format: date }
+        dataAsOf: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        failureCode: { type: [string, 'null'] }
+    BusinessAnalysisReport:
+      type: object
+      description: Schema-versioned report; concrete evidence invariants are documented in report-schema.md.
+      required: [reportId, schemaVersion, reportVersion, reportType, status, metrics, evidence, findings, hypotheses, recommendations, scenarios, charts, limitations, modelMetadata]
+      additionalProperties: true
+      properties:
+        reportId: { type: string, format: uuid }
+        schemaVersion: { type: integer, minimum: 1 }
+        reportVersion: { type: integer, minimum: 1 }
+        reportType: { type: string, enum: [REVENUE_INVESTIGATION, INVENTORY_RISK, SCENARIO_ANALYSIS] }
+        status: { type: string, enum: [COMPLETED] }
+        metrics: { type: array, items: { type: object, additionalProperties: true } }
+        evidence: { type: array, items: { type: object, additionalProperties: true } }
+        findings: { type: array, items: { type: object, additionalProperties: true } }
+        hypotheses: { type: array, items: { type: object, additionalProperties: true } }
+        recommendations: { type: array, items: { type: object, additionalProperties: true } }
+        scenarios: { type: array, items: { type: object, additionalProperties: true } }
+        charts: { type: array, items: { type: object, additionalProperties: true } }
+        limitations: { type: array, items: { type: object, additionalProperties: true } }
+        modelMetadata: { type: object, additionalProperties: true }
+    BusinessReportDetail:
+      type: object
+      required: [metadata]
+      properties:
+        metadata: { $ref: '#/components/schemas/BusinessReportSummary' }
+        report:
+          anyOf:
+            - $ref: '#/components/schemas/BusinessAnalysisReport'
+            - type: 'null'
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string }

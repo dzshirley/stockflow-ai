@@ -1,0 +1,83 @@
+name: stockflow-ai
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stockflow}
+      POSTGRES_USER: ${POSTGRES_USER:-stockflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockflow_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - stockflow-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-stockflow}
+      POSTGRES_USER: ${POSTGRES_USER:-stockflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockflow_dev_password}
+      SERVER_PORT: 8080
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com}
+      AI_TIMEOUT: ${AI_TIMEOUT:-20s}
+      AI_RETRY_MAX_ATTEMPTS: ${AI_RETRY_MAX_ATTEMPTS:-2}
+      AI_RETRY_INITIAL_BACKOFF: ${AI_RETRY_INITIAL_BACKOFF:-200ms}
+      AI_RETRY_BACKOFF_MULTIPLIER: ${AI_RETRY_BACKOFF_MULTIPLIER:-2}
+      AI_RETRY_MAX_BACKOFF: ${AI_RETRY_MAX_BACKOFF:-1s}
+      AI_MAX_TOOL_CALLS: ${AI_MAX_TOOL_CALLS:-6}
+      AI_MAX_RESPONSE_TOKENS: ${AI_MAX_RESPONSE_TOKENS:-1200}
+      AI_MAX_QUESTION_LENGTH: ${AI_MAX_QUESTION_LENGTH:-1000}
+      AI_MAX_HISTORY_MESSAGES: ${AI_MAX_HISTORY_MESSAGES:-12}
+      AI_MAX_RESPONSE_CHARACTERS: ${AI_MAX_RESPONSE_CHARACTERS:-50000}
+      AI_PRICING_VERSION: ${AI_PRICING_VERSION:-2026-10-22}
+      AI_PRICING_MODEL: ${AI_PRICING_MODEL:-gpt-4o-mini}
+      AI_INPUT_USD_PER_MILLION: ${AI_INPUT_USD_PER_MILLION:-0.15}
+      AI_OUTPUT_USD_PER_MILLION: ${AI_OUTPUT_USD_PER_MILLION:-0.60}
+      BUSINESS_ANALYSIS_RETENTION_DAYS: ${BUSINESS_ANALYSIS_RETENTION_DAYS:-90}
+      BUSINESS_ANALYSIS_MAX_CONTRIBUTION_ROWS: ${BUSINESS_ANALYSIS_MAX_CONTRIBUTION_ROWS:-50}
+      BUSINESS_ANALYSIS_PROMPT_VERSION: ${BUSINESS_ANALYSIS_PROMPT_VERSION:-business-analysis-v1}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  stockflow-postgres:
