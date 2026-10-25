@@ -2,6 +2,7 @@ import type { ProblemDetails } from '../types/api'
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
 export const API_BASE_URL = configuredBase.endsWith('/') ? configuredBase.slice(0, -1) : configuredBase
+export const REGISTRATION_ENABLED = import.meta.env.VITE_REGISTRATION_ENABLED !== 'false'
 export const UNAUTHORIZED_EVENT = 'stockflow:unauthorized'
 
 export class ApiError extends Error {

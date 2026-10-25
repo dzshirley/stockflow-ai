@@ -41,6 +41,29 @@ public interface InventoryRepository extends JpaRepository<InventoryBalance, UUI
     @Modifying(flushAutomatically = true)
     @Query("""
             UPDATE InventoryBalance i
+            SET i.availableQuantity = i.availableQuantity + :quantity,
+                i.version = i.version + 1,
+                i.updatedAt = :now
+            WHERE i.productId = :productId
+              AND i.storeId = :storeId
+              AND i.version = :expectedVersion
+              AND i.availableQuantity = :expectedAvailable
+              AND i.reservedQuantity = :expectedReserved
+              AND i.reorderPoint = :expectedReorderPoint
+            """)
+    int receiveRestock(
+            @Param("storeId") UUID storeId,
+            @Param("productId") UUID productId,
+            @Param("quantity") long quantity,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("expectedAvailable") long expectedAvailable,
+            @Param("expectedReserved") long expectedReserved,
+            @Param("expectedReorderPoint") long expectedReorderPoint,
+            @Param("now") Instant now);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE InventoryBalance i
             SET i.reorderPoint = :reorderPoint,
                 i.version = i.version + 1,
                 i.updatedAt = :now

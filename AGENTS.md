@@ -38,11 +38,27 @@
 - Keep AI tools typed, bounded, authorized, and deterministic for metrics. The model may explain verified results but must not perform financial arithmetic or arbitrary SQL.
 - Mock external providers in default local and CI workflows.
 
-## Phase 6 and Phase 7 constraints
+## Phase 9 deployment constraints
 
-- Phase 6 is explicitly active and implements read-only evidence-backed report generation. Do not implement Phase 7 proposal, approval, or operational execution workflows unless Phase 7 is separately started.
+- Phases 6 through 8 are complete. Phase 9 Stage A prepares deployment code and
+  portfolio material only. Never run Terraform against AWS, purchase a domain,
+  expose a public endpoint, enable paid AI, or start Stage B without explicit
+  approval of the architecture, recurring cost, account, region, and exposure.
 - Authorize every report operation server-side from `StoreContext`: ADMIN may access every report in the authenticated store; STAFF may access only reports they created; cross-store access is always prohibited.
 - Persist reports in PostgreSQL with searchable relational metadata and a validated, versioned JSONB report body. Design indexes for documented list/detail/status retrieval paths rather than speculative JSON searches.
 - Keep all authoritative metrics, chart points, calculations, evidence references, assumptions, and limitation semantics server-owned. The model may select only bounded synthesis codes and may not write operational data.
 - Use a configurable 90-day retention period as a development default only. Do not automatically delete reports until user/store deletion, audit, backup, and regulatory requirements have an approved policy.
 - Keep deterministic mock-provider evaluations mandatory in CI. Live-provider evaluation is opt-in and billable; never run it without explicit approval, and treat real-provider behavior as unverified until evidence from such a run exists.
+- Phase 6 report generation uses bounded ownership leases and scheduled reconciliation; completed JSONB must match relational identity, ownership, lifecycle, versions, and periods.
+- Phase 7 must separate proposal, ADMIN approval, and ADMIN execution; revalidate the exact inventory version and evidence at execution; commit the idempotent inventory effect and audits atomically; and keep the LLM outside the mutation transaction.
+- Do not introduce historical inventory forecasting, causal inference,
+  autonomous supplier ordering, a queue, Redis locking, or another deployed
+  service without a separately recorded decision.
+- Preserve the Phase 8 request-correlation/privacy boundary, frontend bundle
+  budgets, bounded integration-test waits, and deterministic non-billable CI.
+- Production registration defaults off. Demo bootstrap is a supervised,
+  temporary exception followed immediately by server-side disablement.
+- AWS releases must use a reviewed full commit SHA, GitHub OIDC, a protected
+  environment, immutable images, health verification, and documented rollback.
+- Public portfolio data must be synthetic. Never place demo credentials,
+  Terraform state, plans, tfvars, customer data, or provider secrets in Git.

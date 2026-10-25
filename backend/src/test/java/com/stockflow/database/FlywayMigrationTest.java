@@ -21,7 +21,7 @@ class FlywayMigrationTest {
                 .load()
                 .migrate();
 
-        assertThat(migrationResult.migrationsExecuted).isEqualTo(6);
+        assertThat(migrationResult.migrationsExecuted).isEqualTo(9);
 
         try (var connection = DriverManager.getConnection(DATABASE_URL, "sa", "");
                 var statement = connection.createStatement();
@@ -32,9 +32,10 @@ class FlywayMigrationTest {
                                 + "'INVENTORY_ADJUSTMENTS', 'ORDERS', 'ORDER_ITEMS', "
                                 + "'ORDER_IDEMPOTENCY_KEYS', 'OUTBOX_EVENTS', 'AI_CONVERSATIONS', "
                                 + "'AI_MESSAGES', 'AI_TOOL_EXECUTIONS', 'AI_REQUEST_TELEMETRY', "
-                                + "'BUSINESS_ANALYSIS_REPORTS')")) {
+                                + "'BUSINESS_ANALYSIS_REPORTS', 'RESTOCK_PROPOSALS', "
+                                + "'RESTOCK_PROPOSAL_EVENTS', 'RESTOCK_EXECUTION_ATTEMPTS')")) {
             assertThat(result.next()).isTrue();
-            assertThat(result.getInt(1)).isEqualTo(15);
+            assertThat(result.getInt(1)).isEqualTo(18);
         }
     }
 }

@@ -133,3 +133,83 @@
 - **Recommendations:** Priority follows deterministic revenue-change and current-risk rules. Expected financial impact remains unavailable unless calculable; every recommendation is advisory and requires later human approval.
 - **Trade-offs:** The code allow-list constrains narrative variety and requires deliberate expansion. Synchronous generation is simple but may need a queue after measured load. Real-provider adherence remains unverified until an approved live run.
 - **Boundary:** Phase 7 mutation proposals, approval transitions, freshness revalidation, execution, and operational audit are not authorized by this decision.
+
+## ADR-018 — Restock execution is a separate, versioned human command
+
+- **Decision:** A Phase 6 recommendation may seed a relational restock proposal, but it cannot mutate inventory. Proposal, ADMIN approval, and ADMIN execution are separate version-checked state transitions. Execution requires an explicit received-stock confirmation, reruns store/role/evidence/inventory freshness checks, and invokes a deterministic expected-version inventory command with an idempotency key.
+- **Transaction boundary:** The inventory increment, inventory audit, proposal completion, proposal event, successful execution attempt, and outbox event commit in one PostgreSQL transaction. A unique proposal command ID makes replay return the existing result. Provider calls and external supplier calls are prohibited inside the transaction.
+- **Authorization:** STAFF may propose only from completed reports they own and may read their own proposals. ADMIN may access, decide, and execute all proposals in the authenticated store. Every lookup includes server-derived store scope; cross-store IDs return not found.
+- **Freshness:** Approval records the exact proposal version. Execution compares the active product, source evidence, report freshness, inventory version/time/values, and deterministic risk state with that approved snapshot. A mismatch produces terminal `STALE`; the system never silently rewrites and re-approves a quantity.
+- **Recovery:** `EXECUTING` uses a bounded lease. Recovery checks the unique inventory result before returning an expired claim to `APPROVED` or finalizing it as `EXECUTED`. Only classified transient database failures receive a small bounded retry; business, authorization, and stale-data conflicts do not.
+- **Semantics:** The initial operation represents confirmation of inventory physically received. It is not a supplier purchase order. Supplier ordering requires a separate supplier/PO/receipt domain before implementation.
+- **Why:** Consequential actions need an inspectable human decision, protection from stale AI evidence and concurrent stock changes, exactly-once business effect under retries, and an append-only audit trail. PostgreSQL already provides the required transaction and coordination boundary.
+- **Trade-offs:** The workflow adds tables, states, recovery logic, and explicit user steps. It intentionally sacrifices autonomous convenience and does not estimate demand or optimal order quantity.
+- **Status:** Implemented in Flyway V8/V9 and the `operations` feature package. V9 adds proposal-generation usage, estimated-cost, and latency telemetry without changing the already-applied V8 workflow migration. The initial executable operation records physically received stock only; it does not create supplier orders or payments.
+
+## ADR-019 — Local hardening first; measured complexity only
+
+- **Decision:** Add correlation IDs, safe request metrics/logs, bounded
+  in-process login throttling, HTTP size limits, explicit integration-test
+  bounds, frontend bundle budgets, and CI security gates inside the existing
+  modular monolith. Do not add a broker, Redis, tracing backend, metrics stack,
+  WAF, or new service without a measured deployment requirement.
+- **Performance:** Treat the reproducible k6/Docker results as local smoke
+  evidence rather than an SLO. Require `EXPLAIN`/latency/saturation evidence
+  before adding indexes, caches, or materialized views.
+- **Outbox:** Durable transactional rows are useful now, but external delivery
+  is not claimed. A relay begins only when a named consumer exists and must use
+  bounded claims, acknowledgement, backoff, and consumer deduplication for
+  at-least-once delivery.
+- **Security:** Process-local login throttling limits opportunistic attempts but
+  is not the horizontal-scale boundary. Edge/shared enforcement, secure cookies,
+  TLS/security headers, centralized sessions, and secret rotation belong to an
+  approved production deployment design.
+- **Observability:** Emit route/method/status/duration and a request ID. Exclude
+  request bodies, query values, cookies, credentials, prompts, and business
+  rows. Keep Actuator exposure limited to health/info until an operator-owned
+  metrics system exists.
+- **Why:** These controls materially improve failure diagnosis and regression
+  protection while keeping local development and CI deterministic, inexpensive,
+  and understandable.
+- **Trade-offs:** In-process controls reset on restart and are not shared;
+  local metrics are ephemeral; production SLOs and multi-instance behavior
+  remain future deployment decisions.
+
+## ADR-020 — Same-origin managed AWS demo with an explicit spend gate
+
+- **Decision:** Prepare a single-region S3/CloudFront frontend, HTTPS ALB, one
+  ECS/Fargate backend task, and encrypted private Single-AZ RDS PostgreSQL using
+  Terraform. Keep mock AI and disabled public registration as production
+  defaults. Stage A may validate code locally but may not call AWS or expose a
+  public endpoint; Stage B requires explicit approval of cost and exposure.
+- **Alternatives:** A $42–50/month Lightsail host plus managed database reduces
+  cost but increases host patch/release work and weakens network/IAM controls. A
+  $12–16/month single host co-locates the app and database in one failure domain.
+  Kubernetes, NAT Gateway, Redis, broker, WAF, and Multi-AZ RDS are not justified
+  for expected demo traffic.
+- **Networking:** CloudFront is the only browser origin. S3 stays private behind
+  OAC. The ALB permits only the CloudFront managed prefix list and a generated
+  origin header. The backend uses a public IP for outbound access without NAT
+  but has no direct ingress. RDS is private and accepts PostgreSQL only from the
+  backend security group.
+- **Delivery:** GitHub Actions first runs the deterministic full gate, then a
+  manual protected-environment job assumes a repository/environment-scoped AWS
+  role through OIDC. Releases are immutable full-SHA images and cache-controlled
+  S3 objects; ECS circuit-breaker health protects rollout. No long-lived AWS key
+  belongs in GitHub.
+- **Data and AI:** A controlled bootstrap briefly enables registration, then
+  immediately disables it. The checked-in seed contains synthetic `DEMO-*`
+  rows only. The public demo uses the deterministic mock; live-model use remains
+  separately billable, capped, and unverified.
+- **Availability and scaling:** One task and Single-AZ RDS keep the managed
+  estimate near $88–95/month but are not highly available. Horizontal scaling
+  requires shared sessions and distributed/edge login throttling first. Multi-AZ
+  and additional tasks require a measured availability goal and new cost review.
+- **Operations:** CloudWatch alarms cover target health, 5xx, p95, database CPU,
+  connections/storage, provider/report/receipt failures, and recovery signals;
+  AWS Budgets warn at 50/80/100%. Token use and estimated—not billed—AI cost are
+  retained in PostgreSQL and safe logs. The outbox has no delivery alarm because
+  it has no relay or consumer.
+- **Trade-offs:** ALB, public IPv4, Fargate, and RDS accrue cost at little traffic;
+  RDS restoration and real cloud rollout remain unverified until Stage B. The
+  backend public IP is cost-driven outbound plumbing rather than public reach.

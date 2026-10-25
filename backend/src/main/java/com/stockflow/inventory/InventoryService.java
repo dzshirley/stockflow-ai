@@ -130,6 +130,53 @@ public class InventoryService {
         record(storeId, productId, 0, -quantity, reason, actorUserId, now);
     }
 
+    @Transactional(readOnly = true)
+    public InventorySnapshot snapshot(UUID storeId, UUID productId) {
+        var balance = requireBalance(storeId, productId);
+        return new InventorySnapshot(
+                balance.getProductId(), balance.getAvailableQuantity(), balance.getReservedQuantity(),
+                balance.getReorderPoint(), balance.getVersion(), balance.getUpdatedAt());
+    }
+
+    /** Deterministic receipt command used only by an already authorized operational workflow. */
+    public ReceiptResult receiveRestock(
+            UUID storeId,
+            UUID productId,
+            long quantity,
+            long expectedVersion,
+            long expectedAvailable,
+            long expectedReserved,
+            long expectedReorderPoint,
+            UUID actorUserId,
+            UUID commandId) {
+        if (quantity <= 0) throw ApiExceptions.badRequest("INVALID_RESTOCK_QUANTITY", "Quantity must be positive");
+        var existing = adjustmentRepository.findByOperationCommandId(commandId);
+        if (existing.isPresent()) {
+            var adjustment = existing.get();
+            if (!adjustment.getProductId().equals(productId) || adjustment.getAvailableDelta() != quantity) {
+                throw ApiExceptions.conflict("RESTOCK_COMMAND_CONFLICT", "Command ID was used for another receipt");
+            }
+            return new ReceiptResult(adjustment.getId(), snapshot(storeId, productId));
+        }
+        productService.requireActiveProduct(storeId, productId);
+        var now = Instant.now(clock);
+        if (inventoryRepository.receiveRestock(
+                storeId, productId, quantity, expectedVersion, expectedAvailable,
+                expectedReserved, expectedReorderPoint, now) != 1) {
+            throw ApiExceptions.conflict("RESTOCK_INVENTORY_STALE", "Inventory changed after this proposal was created");
+        }
+        var adjustment = adjustmentRepository.save(new InventoryAdjustment(
+                UUID.randomUUID(), storeId, productId, quantity, 0,
+                "RESTOCK_RECEIPT", actorUserId, commandId, now));
+        return new ReceiptResult(adjustment.getId(), snapshot(storeId, productId));
+    }
+
+    public record InventorySnapshot(
+            UUID productId, long availableQuantity, long reservedQuantity, long reorderPoint,
+            long version, Instant updatedAt) {}
+
+    public record ReceiptResult(UUID adjustmentId, InventorySnapshot inventory) {}
+
     private InventoryModels.BalanceResponse response(UUID storeId, InventoryBalance balance) {
         var product = productService.requireOwnedProduct(storeId, balance.getProductId());
         return new InventoryModels.BalanceResponse(

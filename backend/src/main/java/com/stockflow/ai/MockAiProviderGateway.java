@@ -4,6 +4,8 @@ import com.stockflow.ai.AiConfiguration.AiProperties;
 import com.stockflow.ai.AiModels.IntentPlan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 
 @Component
 @ConditionalOnProperty(prefix = "stockflow.ai", name = "provider", havingValue = "mock", matchIfMissing = true)
@@ -12,11 +14,13 @@ class MockAiProviderGateway implements AiProviderGateway {
     private final MockAiIntentPlanner planner;
     private final AnalyticsToolAdapter tools;
     private final AiProperties properties;
+    private final ObjectMapper mapper;
 
-    MockAiProviderGateway(MockAiIntentPlanner planner, AnalyticsToolAdapter tools, AiProperties properties) {
+    MockAiProviderGateway(MockAiIntentPlanner planner, AnalyticsToolAdapter tools, AiProperties properties, ObjectMapper mapper) {
         this.planner = planner;
         this.tools = tools;
         this.properties = properties;
+        this.mapper = mapper;
     }
 
     @Override
@@ -45,6 +49,20 @@ class MockAiProviderGateway implements AiProviderGateway {
                 + ",\"recommendationCodes\":" + recommendations + "}";
         return new AiModels.ProviderResult(
                 providerName(), configuredModel(), content, AiModels.ProviderUsage.unavailable());
+    }
+
+    @Override
+    public AiModels.ProviderResult selectRestock(AiModels.RestockSelectionRequest request) {
+        try {
+            var root = mapper.readTree(request.boundedCandidatesJson());
+            var ids = new java.util.ArrayList<String>();
+            root.path("candidates").forEach(item -> ids.add(item.path("productId").asText()));
+            return new AiModels.ProviderResult(providerName(), configuredModel(),
+                    mapper.writeValueAsString(Map.of("selectedProductIds", ids)),
+                    AiModels.ProviderUsage.unavailable());
+        } catch (Exception exception) {
+            throw AiProviderFailureClassifier.malformed(exception);
+        }
     }
 
     @Override

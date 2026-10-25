@@ -10,7 +10,7 @@
 
 ## Logical ER model
 
-Flyway V1 creates `app_users`, `stores`, and `store_memberships`. Flyway V2 adds commerce tables. Flyway V3 adds immutable analytics snapshot columns and indexes. Flyway V4 adds AI conversations/messages/tool audits, V5 adds request telemetry, and V6 adds business-analysis report metadata plus JSONB documents. Approval/proposal entities remain later targets.
+Flyway V1 creates `app_users`, `stores`, and `store_memberships`. Flyway V2 adds commerce tables. Flyway V3 adds immutable analytics snapshot columns and indexes. Flyway V4 adds AI conversations/messages/tool audits, V5 adds request telemetry, V6 adds business-analysis report metadata plus JSONB documents, V7 hardens report generation leases, V8 adds restock operations, and V9 adds proposal-generation model telemetry.
 
 ```mermaid
 erDiagram
@@ -242,6 +242,21 @@ The idempotency row is inserted with `ON CONFLICT DO NOTHING` and then selected 
 - `retention_until` defaults from configurable 90-day application policy, but no automatic deletion is implemented or approved.
 - See [report schema](report-schema.md) for document invariants.
 
-## Later target indexes
+## Implemented Phase 7 proposal invariants and indexes
 
-- `(store_id, status, created_at)` on proposals supports approval queues.
+- Flyway V8 adds `restock_proposals`, `restock_proposal_events`, and
+  `restock_execution_attempts`, plus nullable `operation_command_id` on inventory
+  adjustments.
+- Status is constrained to `PROPOSED|APPROVED|EXECUTING|EXECUTED|REJECTED|CANCELLED|STALE|FAILED`;
+  proposed quantity and captured inventory values are positive/nonnegative and bounded.
+- `(store_id, created_at DESC, id)` serves ADMIN lists and
+  `(store_id, created_by_user_id, created_at DESC, id)` serves STAFF lists.
+  Source-report and status/lease indexes support traceability and recovery.
+- Create keys are unique per store/creator/product and retain a canonical request
+  hash. Execution command IDs are unique on attempts and inventory adjustments,
+  closing duplicate-effect races at the database boundary.
+- Successful receipt state, inventory adjustment, workflow event, execution
+  attempt, and outbox event share one PostgreSQL transaction.
+- Flyway V9 adds provider-reported token usage, versioned estimated cost, and
+  generation latency without rewriting the already-applied V8 migration. These
+  values describe proposal generation and are estimates, not billing records.

@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../features/auth/AuthProvider'
-import { errorMessage } from '../../services/api'
+import { errorMessage, REGISTRATION_ENABLED } from '../../services/api'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -40,7 +40,9 @@ export function LoginPage() {
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Your password" /></label>
         <button className="button button--primary button--wide" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>
       </form>
-      <p className="auth-switch">Opening a new store? <Link to="/register">Create an account</Link></p>
+      {REGISTRATION_ENABLED
+        ? <p className="auth-switch">Opening a new store? <Link to="/register">Create an account</Link></p>
+        : <p className="auth-switch">This demonstration uses a controlled account. Ask the project owner for access.</p>}
     </div>
   )
 }

@@ -121,6 +121,9 @@ public final class AiModels {
     record BusinessSynthesisRequest(String evidenceBundleJson) {
     }
 
+    record RestockSelectionRequest(String boundedCandidatesJson) {
+    }
+
     record ProviderResult(
             String provider,
             String model,

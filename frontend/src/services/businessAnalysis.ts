@@ -6,6 +6,7 @@ import type {
   BusinessReportStatus,
   BusinessReportSummary,
 } from '../types/api'
+import { newIdempotencyKey } from '../utils/format'
 
 export function listBusinessReports(filters: {
   status?: BusinessReportStatus
@@ -25,7 +26,7 @@ export function getBusinessReport(reportId: string) {
 
 export function createBusinessReport(
   request: BusinessReportCreateRequest,
-  idempotencyKey: string = crypto.randomUUID(),
+  idempotencyKey: string = newIdempotencyKey(),
 ) {
   return apiRequest<BusinessReportDetail>('/api/business-analysis/reports', {
     method: 'POST',

@@ -1,0 +1,6 @@
+domain_name      = "example.com"
+hosted_zone_id   = "Z0000000000000000000"
+backend_image_tag = "0123456789abcdef0123456789abcdef01234567"
+alarm_email      = "operator@example.com"
+monthly_budget_usd = 100
+github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"

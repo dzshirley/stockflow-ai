@@ -12,6 +12,7 @@ import type {
   BusinessMetric,
   BusinessReportCreateRequest,
 } from '../types/api'
+import { newIdempotencyKey } from '../utils/format'
 
 const suggestions = [
   'Why did revenue change last month?',
@@ -29,7 +30,7 @@ export function BusinessInsightsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDateExclusive, setEndDateExclusive] = useState('')
   const [validationError, setValidationError] = useState('')
-  const idempotencyKey = useRef(crypto.randomUUID())
+  const idempotencyKey = useRef(newIdempotencyKey())
 
   const history = useQuery({
     queryKey: ['business-analysis', 'reports'],
@@ -43,7 +44,7 @@ export function BusinessInsightsPage() {
   const create = useMutation({
     mutationFn: (request: BusinessReportCreateRequest) => createBusinessReport(request, idempotencyKey.current),
     onSuccess: (result) => {
-      idempotencyKey.current = crypto.randomUUID()
+      idempotencyKey.current = newIdempotencyKey()
       setSelectedId(result.metadata.id)
       queryClient.setQueryData(['business-analysis', 'report', result.metadata.id], result)
       void queryClient.invalidateQueries({ queryKey: ['business-analysis', 'reports'] })

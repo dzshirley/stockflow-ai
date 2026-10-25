@@ -114,7 +114,8 @@
 ## Critical later suites
 
 - Full HTTP contract tests for each endpoint and field-level error payload.
-- Payment/cancellation/expiration races and scheduled-expiration clock fixtures.
+- Additional payment/expiration races and scheduled-expiration clock fixtures;
+  payment/cancellation concurrency is covered in Phase 8.
 - Duplicate message/approval execution behavior.
 - Historical inventory snapshots/stockout duration once that data model exists, plus sustained large-store query plans before materialization or caching.
 - Approved live-provider execution and longitudinal model-quality/cost baselines.
@@ -122,3 +123,118 @@
 - Repeated approval behavior remains Phase 7 scope; Phase 5 tools are read-only and cannot create or execute actions.
 
 Probabilistic model evaluation is never used as a substitute for deterministic tool and domain tests.
+
+## Phase 7 checks
+
+- PostgreSQL workflow coverage verifies proposal generation/replay, exact-version
+  transitions, ADMIN/STAFF and cross-store boundaries, approval without stock
+  mutation, explicit receipt confirmation, stale inventory, duplicate command
+  replay, concurrent commands, audit/outbox uniqueness, event order, and expired
+  execution-lease recovery.
+- Provider tests reject malformed output and product IDs outside the bounded
+  candidate set, and propagate provider outage without exposing a mutation tool.
+- Frontend service tests verify CSRF/idempotency headers. Operations UI tests
+  verify receipt confirmation gates execution and render evidence/assumptions.
+- Live-provider restock behavior was not run and remains unverified. The
+  deterministic mock is the required CI baseline.
+
+### Phase 7 verification record (2026-10-23)
+
+- Full Java 21 backend verification passed 162 unit/MVC/migration/evaluation/fault
+  tests and 23 non-billable integration tests; the one live-provider evaluation
+  remained skipped (185 passed, 1 skipped). Two final acceptance tests for
+  provider usage and outbox rollback/retry then passed in a focused run,
+  bringing the checked-in non-billable suite to 187 tests. After the browser-discovered
+  PostgreSQL timestamp precision correction, the 12 Phase 6 integrity and Phase
+  7 operations workflow tests passed again.
+- An injected PostgreSQL outbox-trigger failure proves the inventory adjustment,
+  proposal completion, and outbox write roll back together; the separately
+  recorded `FAILED` attempt can then be retried explicitly and succeeds once.
+- Frontend strict TypeScript, zero-warning ESLint, 41 Vitest tests across 17
+  files, and the Vite production build passed. A subsequent reliability review
+  split routes lazily, reducing the initial production chunk from 777.47 kB
+  minified/225.15 kB gzip to 257.19 kB/79.55 kB; the 500-kB advisory is gone.
+- Docker Compose rebuilt healthy backend/frontend images, Flyway advanced the
+  persistent PostgreSQL database from V6 through V9, and all three services
+  reported healthy.
+- Two Playwright Chromium workflows passed: the existing protected commerce →
+  analytics → AI → Business Insights flow and a new completed report → proposal
+  → ADMIN approval → explicit receipt → inventory audit flow.
+
+### Phase 7 reliability review (2026-10-23)
+
+- A prior full run recorded the stale-inventory test at about 897 seconds but
+  retained no blocker or thread evidence. Three controlled class runs passed in
+  about 16 seconds each; the affected case took about 0.45 seconds. A database
+  deadlock was not reproduced or established.
+- The workflow integration class now has 30-second JUnit/startup/statement
+  bounds, a five-second PostgreSQL lock timeout, ten-second concurrent-future
+  bounds, and delayed database blocker plus JVM thread diagnostics.
+- The default full verification still skips the billable live-provider class.
+  Its argument assertions and hard USD 0.05 cost ceiling are verified by
+  compilation/discovery, not by a real provider call.
+- The post-change Java 21 full gate passed 163 fast tests and 24 non-billable
+  integration tests (187 passed); the one live-provider test was skipped. The
+  full run completed in 1 minute 24 seconds, and the stale-inventory case took
+  0.402 seconds. Frontend typecheck, zero-warning lint, 41 tests, and production
+  build passed, followed by both Playwright Chromium workflows against rebuilt
+  Compose images.
+- Full details and remaining hypotheses are in the
+  [Phase 7 reliability review](phase7-reliability-review.md).
+
+## Phase 8 hardening coverage
+
+- Login guard unit tests cover threshold enforcement, success reset, expiry,
+  and remote-address isolation without storing raw identifiers.
+- Request observability tests cover accepted/rejected correlation IDs, response
+  propagation, route/status timers, and MDC cleanup.
+- Operations MVC tests cover anonymous denial, CSRF and idempotency headers,
+  bounded list input, and receipt confirmation validation.
+- PostgreSQL workflow tests now cover concurrent same-key order creation,
+  payment-versus-cancellation terminal races, repeated stale-proposal
+  validation, and idempotent recovery. Integration tests use bounded JUnit,
+  future, startup, lock, and statement waits rather than unlimited blocking.
+- Playwright adds one negative real-stack workflow for order replay/conflict,
+  insufficient inventory, invalid terminal transition, and cross-store
+  isolation. The run also discovered that `crypto.randomUUID` is unavailable on
+  a non-secure `host.docker.internal` origin; the Web Crypto fallback is covered
+  by Vitest and the corrected workflows pass in that environment.
+- `scripts/performance/phase8-api-smoke.js` creates only an isolated synthetic
+  tenant and asserts every endpoint result while recording endpoint-tagged
+  latency and error rates. It is a smoke benchmark, not a correctness suite or
+  production capacity test.
+- CI runs deterministic mock-provider tests only. The live provider class is
+  discovered and skipped unless explicitly enabled; no Phase 8 command enables
+  it.
+
+The final verified counts and runner outcomes are recorded in
+[Phase 8 verification](phase8-verification.md) and
+[engineering metrics](engineering-metrics.md).
+
+## Phase 9 Stage A verification
+
+Deployment preparation adds one MVC regression proving that the production
+registration switch rejects `POST /api/auth/register` before the service runs.
+The complete existing Java 21 gate remains authoritative for commerce,
+PostgreSQL migrations, concurrency, tenant isolation, evidence, proposal
+execution, and provider fault isolation. Frontend `pnpm check` continues to run
+strict TypeScript, zero-warning ESLint, Vitest, the production build, and both
+initial/chunk bundle budgets.
+
+Infrastructure checks are deliberately non-provisioning: `terraform fmt
+-check`, `terraform init -backend=false`, and `terraform validate`; YAML parsing
+for every workflow; POSIX shell syntax for demo tools; Docker image builds; and
+`docker compose config`. These establish syntax/provider-schema/build evidence,
+not an AWS plan or a successful deployment. An authenticated AWS plan is Stage
+B because it resolves account state and can reveal billable resources.
+
+The final local gate rebuilds Compose, waits for PostgreSQL/backend/frontend
+health, verifies direct/proxied health and production security headers, runs the
+three Playwright Chromium workflows, executes the reproducible synthetic seed
+and mock-AI preparation, and captures screenshots through the working browser.
+Live OpenAI evaluation remains skipped and no billable request is authorized.
+
+Exact Stage A commands, counts, pass/skip outcomes, and unverified cloud behavior
+are recorded in [phase9-verification.md](phase9-verification.md). Remote GitHub
+Actions and AWS deployment are not claimed until they execute on a pushed,
+reviewed commit after explicit approval.

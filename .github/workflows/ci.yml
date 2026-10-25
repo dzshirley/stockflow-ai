@@ -16,6 +16,7 @@ jobs:
   backend:
     name: Backend / Java 21
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -32,6 +33,7 @@ jobs:
   frontend:
     name: Frontend / Node 24
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -53,6 +55,7 @@ jobs:
   e2e:
     name: E2E / Chromium
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v5
@@ -72,6 +75,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Start integrated stack
         run: docker compose up -d --build --wait
+      - name: Verify readiness
+        run: curl --fail --show-error http://localhost:8080/actuator/health/readiness
       - name: Run commerce workflow
         working-directory: frontend
         run: pnpm test:e2e
@@ -81,3 +86,28 @@ jobs:
       - name: Stop integrated stack
         if: always()
         run: docker compose down
+
+  security:
+    name: Security / Secrets and dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Reject common committed credential formats
+        shell: bash
+        run: |
+          if git grep -nE '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' -- .; then
+            echo 'Potential credential material detected in tracked files.' >&2
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Audit production frontend dependencies
+        working-directory: frontend
+        run: pnpm audit --prod --audit-level high

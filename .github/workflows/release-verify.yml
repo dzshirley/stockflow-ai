@@ -1,0 +1,43 @@
+name: Reusable release verification
+
+on:
+  workflow_call:
+    inputs:
+      git_ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.git_ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Verify backend
+        working-directory: backend
+        run: ./mvnw --batch-mode verify
+      - name: Verify frontend
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile && pnpm check
+      - name: Build production containers without publishing
+        run: |
+          docker build backend
+          docker build --build-arg VITE_REGISTRATION_ENABLED=false frontend

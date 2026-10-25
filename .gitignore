@@ -24,3 +24,9 @@ frontend/test-results/
 
 # Local infrastructure data
 .data/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log

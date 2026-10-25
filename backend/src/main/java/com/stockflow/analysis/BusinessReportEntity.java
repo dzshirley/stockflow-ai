@@ -103,6 +103,15 @@ class BusinessReportEntity {
     @Column(name = "failure_code", length = 80)
     private String failureCode;
 
+    @Column(name = "generation_owner")
+    private UUID generationOwner;
+
+    @Column(name = "generation_started_at")
+    private Instant generationStartedAt;
+
+    @Column(name = "generation_lease_until")
+    private Instant generationLeaseUntil;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -157,17 +166,28 @@ class BusinessReportEntity {
         this.retentionUntil = retentionUntil;
     }
 
-    void markRunning(Instant now) {
+    void markRunning(UUID owner, Instant leaseUntil, Instant now) {
         if (status != BusinessAnalysisReport.Status.PENDING) {
             throw new IllegalStateException("Only pending reports can start");
         }
         status = BusinessAnalysisReport.Status.RUNNING;
+        generationOwner = owner;
+        generationStartedAt = now;
+        generationLeaseUntil = leaseUntil;
         updatedAt = now;
     }
 
-    void complete(String document, BusinessAnalysisReport.ModelMetadata model, Instant dataAsOf, Instant now) {
+    void complete(
+            UUID owner,
+            String document,
+            BusinessAnalysisReport.ModelMetadata model,
+            Instant dataAsOf,
+            Instant now) {
         if (status != BusinessAnalysisReport.Status.RUNNING) {
             throw new IllegalStateException("Only running reports can complete");
+        }
+        if (!owner.equals(generationOwner) || generationLeaseUntil == null || !now.isBefore(generationLeaseUntil)) {
+            throw new IllegalStateException("The report generation lease is no longer valid");
         }
         status = BusinessAnalysisReport.Status.COMPLETED;
         reportDocument = document;
@@ -184,15 +204,26 @@ class BusinessReportEntity {
         completedAt = now;
         updatedAt = now;
         failureCode = null;
+        clearGenerationLease();
     }
 
-    void fail(String code, Instant now) {
+    void fail(UUID owner, String code, Instant now) {
         if (status == BusinessAnalysisReport.Status.COMPLETED) {
             throw new IllegalStateException("A completed report cannot fail");
+        }
+        if (status == BusinessAnalysisReport.Status.RUNNING && !owner.equals(generationOwner)) {
+            throw new IllegalStateException("Only the current generation owner can fail this report");
         }
         status = BusinessAnalysisReport.Status.FAILED;
         failureCode = code;
         updatedAt = now;
+        clearGenerationLease();
+    }
+
+    private void clearGenerationLease() {
+        generationOwner = null;
+        generationStartedAt = null;
+        generationLeaseUntil = null;
     }
 
     UUID getId() { return id; }
@@ -217,4 +248,7 @@ class BusinessReportEntity {
     Instant getUpdatedAt() { return updatedAt; }
     Instant getCompletedAt() { return completedAt; }
     Instant getRetentionUntil() { return retentionUntil; }
+    UUID getGenerationOwner() { return generationOwner; }
+    Instant getGenerationStartedAt() { return generationStartedAt; }
+    Instant getGenerationLeaseUntil() { return generationLeaseUntil; }
 }

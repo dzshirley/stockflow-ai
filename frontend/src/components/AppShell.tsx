@@ -10,6 +10,7 @@ const navigation = [
   { to: '/analytics', label: 'Analytics', icon: '↗' },
   { to: '/ai-assistant', label: 'AI assistant', icon: '✦' },
   { to: '/business-insights', label: 'Business insights', icon: '◈' },
+  { to: '/operations', label: 'Restock operations', icon: '⇧' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 

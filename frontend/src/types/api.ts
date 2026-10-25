@@ -432,6 +432,66 @@ export interface BusinessReportCreateRequest {
   scenarios?: Array<{ type: BusinessScenarioType; changePercent: number }>
 }
 
+export type RestockProposalStatus =
+  | 'PROPOSED' | 'APPROVED' | 'EXECUTING' | 'EXECUTED'
+  | 'REJECTED' | 'CANCELLED' | 'STALE' | 'FAILED'
+
+export interface RestockProposal {
+  id: string
+  productId: string
+  sku: string
+  productName: string
+  status: RestockProposalStatus
+  proposedQuantity: number
+  rationale: string
+  assumptions: string[]
+  sourceReportId: string
+  sourceReportVersion: number
+  recommendationId: string
+  evidenceId: string
+  snapshotAvailable: number
+  snapshotReserved: number
+  snapshotReorderPoint: number
+  snapshotInventoryVersion: number
+  snapshotInventoryUpdatedAt: string
+  sourceDataAsOf: string
+  createdByUserId: string
+  approvedByUserId: string | null
+  approvedAt: string | null
+  executionCommandId: string | null
+  inventoryAdjustmentId: string | null
+  executedAt: string | null
+  failureCode: string | null
+  staleReason: string | null
+  modelProvider: string | null
+  modelName: string | null
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RestockProposalHistory {
+  events: Array<{
+    id: string
+    fromStatus: RestockProposalStatus | null
+    toStatus: RestockProposalStatus
+    action: string
+    actorUserId: string | null
+    reasonCode: string | null
+    createdAt: string
+  }>
+  attempts: Array<{
+    id: string
+    commandId: string
+    status: 'STARTED' | 'SUCCEEDED' | 'FAILED' | 'ABANDONED'
+    attemptNumber: number
+    inventoryAdjustmentId: string | null
+    errorCode: string | null
+    startedAt: string
+    completedAt: string | null
+  }>
+}
+
 export interface ProblemViolation { field: string; message: string }
 export interface ProblemDetails {
   type?: string

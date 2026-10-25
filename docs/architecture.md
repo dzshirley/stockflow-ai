@@ -16,6 +16,11 @@ flowchart LR
 
 Phase 2 expires orders with an in-process scheduled scanner and persists order events atomically in PostgreSQL. RabbitMQ and an outbox relay remain a later addition when an actual asynchronous consumer exists; this avoids operating an unused broker without weakening event durability. Redis is also absent until a measured need exists. An LLM outage disables synthesis, not commerce or deterministic analytics.
 
+The outbox currently guarantees atomic, durable event recording only. There is
+no relay or consumer, so it does not yet guarantee delivery. A future relay must
+provide bounded claiming/retry and consumers must deduplicate event IDs for
+at-least-once delivery; see the [Phase 7 reliability review](phase7-reliability-review.md).
+
 Phase 3 keeps the browser deliberately thin: it owns navigation, forms, request state, and presentation, while the backend remains authoritative for tenant scope, permissions, validation, prices, inventory, state transitions, and idempotency.
 
 Phase 4 keeps analytics in the same modular monolith. Controllers accept only bounded reporting filters; `AnalyticsPeriodResolver` converts store-local dates to UTC half-open instants; `AnalyticsService` owns formulas/comparisons and exposes future AI-ready operations; `AnalyticsQueryRepository` pushes grouping and filtering into PostgreSQL. No analytics endpoint accepts a store ID.
@@ -160,6 +165,38 @@ Report creation snapshots verified metrics and provenance into a schema-versione
 
 Deterministic analytics own all numbers and chart points. The provider receives only a bounded aggregate signal bundle and can select only allow-listed hypothesis/recommendation codes. Deterministic mock evaluation remains the required CI gate. Live-provider evaluation stays disabled unless explicitly enabled and budgeted, so real-provider structured selection remains unverified. See [business analysis design](business-analysis-design.md).
 
+## Phase 7 operations boundary
+
+Phase 7 is implemented inside the modular monolith under `com.stockflow.operations`. PostgreSQL coordinates a versioned proposal state machine and bounded execution leases. Proposal generation is read-only: a provider may select only IDs from server-authorized inventory-risk candidates, while deterministic code calculates quantities. Proposal, ADMIN approval, and explicit ADMIN receipt confirmation are distinct commands.
+
+Execution reauthorizes the store and role and revalidates the completed report, recommendation/evidence hash, report age, active product, exact inventory version/time/values, positive bounded quantity, and current deterministic risk. The expected-version inventory increment, inventory adjustment linked by unique command ID, proposal completion, workflow event, successful attempt, and outbox event commit in one transaction. A replay returns the persisted result; a competing command loses the locked state transition.
+
+No provider call belongs in approval or execution. A provider outage cannot block an already-created proposal, and a model never supplies tenant identity, approval, quantity changes after approval, or mutation authorization. Historical inventory forecasting, causal inference, supplier ordering, queues, Redis locks, and a new deployment remain outside scope. See [Phase 7 architecture](phase7-architecture.md) and [Phase 6 readiness review](phase7-readiness-review.md).
+
+## Phase 8 production-hardening boundary
+
+Every HTTP request receives a validated caller-supplied or server-generated
+correlation ID. The response echoes `X-Request-ID`; MDC carries the ID only for
+the request lifetime. A completion log and Micrometer timer record method,
+matched route, status, and duration without query strings, request/response
+bodies, cookies, credentials, or tenant business data. Actuator readiness is
+the dependency-aware container/CI gate, while `/api/health` remains the stable
+application health contract.
+
+Login throttling is a bounded in-process defense suitable for the current
+single-instance runtime, not a distributed production rate limiter. PostgreSQL
+continues to own correctness: no JVM rate-limit, request-ID, metric, or retry
+mechanism participates in commerce transactions. Transactional retries remain
+explicit idempotent client replays; only read-only provider transport attempts
+use bounded automatic backoff.
+
+The frontend keeps route-level code splitting and enforces raw-minified budgets
+of 300 KiB for the initial entry and 400 KiB for any JavaScript chunk. UUID
+generation uses Web Crypto `randomUUID` when present and a version/variant-safe
+`getRandomValues` fallback for non-secure local origins. See the
+[performance report](performance-report.md), [security review](security-review.md),
+and [reliability review](reliability-review.md).
+
 ## Repository layout
 
 ```text
@@ -179,14 +216,48 @@ frontend/                React/Vite application and tests
   src/services/          Typed HTTP boundary, including conversation APIs
   e2e/                   Playwright real-stack workflows
 infra/docker/            Container build/runtime assets
-infra/aws/               Future cost-conscious AWS definitions/docs
+infra/aws/               Validated Stage A Terraform; never apply without approval
 scripts/seed/              Deterministic analytics demo seed/reset SQL
-scripts/performance/       k6 analytics smoke workload
+scripts/performance/       k6 analytics and Phase 8 mixed API workloads
 docs/                    Requirements, architecture, contracts, decisions
-.github/workflows/       CI checks
+.github/workflows/       CI plus approval-gated release/deployment definitions
 docker-compose.yml       Local integrated environment
 ```
 
-## Production direction (not provisioned)
+## Phase 9 prepared deployment architecture (not provisioned)
 
-A later approved milestone can deploy static frontend assets behind CloudFront/S3 (or a small container), the backend on a single ECS Fargate service, PostgreSQL on small RDS, RabbitMQ on a small broker only if required, TLS through ACM/ALB, and secrets in Secrets Manager/SSM. The initial goal is operational clarity and low idle cost, not multi-region scale.
+Stage A keeps the modular monolith intact and prepares one same-origin public
+surface. CloudFront serves the React build from a private S3 origin and forwards
+uncached `/api/*` traffic over TLS to an ALB. The ALB accepts ingress only from
+the AWS-managed CloudFront origin prefix list and requires a random origin
+header; it forwards to one Fargate task whose security group has no direct
+internet ingress. RDS PostgreSQL is Single-AZ, encrypted, non-public, backed up
+for seven days, and reachable only from the backend security group.
+
+One task is a deliberate portfolio-demo constraint because sessions and login
+throttling are process-local. Its public IP supplies outbound ECR, CloudWatch,
+and optional provider connectivity without a continuously billed NAT Gateway;
+the task remains unreachable from the internet by security-group policy. Before
+horizontal scaling, introduce an explicitly reviewed shared-session mechanism
+and shared or edge throttling. No queue, relay, cache, broker, or worker is
+deployed because the application has no named outbox consumer.
+
+The Spring `prod` profile requires runtime database credentials, TLS database
+transport, secure cookies, trusted forwarded headers, bounded Hikari connection
+settings, graceful shutdown, Flyway migration/validation, and hidden health
+details. Registration and paid AI are disabled by default. The container
+filesystem is read-only except for `/tmp`, and ECS injects the RDS-managed
+secret through its execution role.
+
+Deployments are manual and commit-addressed. A reusable GitHub Actions gate
+re-runs backend, frontend, integration, migration, bundle, and container checks;
+the protected production job then assumes a scoped AWS role via OIDC, publishes
+immutable artifacts, registers a new ECS task revision, waits for
+circuit-breaker-protected health, updates the private S3 origin with explicit
+cache headers, and invalidates CloudFront. Application rollback selects an
+earlier immutable task and S3 version. Flyway remains forward-only and can
+require forward repair or an approved snapshot restore.
+
+The detailed network diagram, compared options, and limitations are in
+[cloud-architecture.md](cloud-architecture.md). This describes prepared code,
+not a live environment, and authorizes no Stage B AWS action.

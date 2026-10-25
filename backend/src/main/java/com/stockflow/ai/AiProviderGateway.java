@@ -6,6 +6,8 @@ interface AiProviderGateway {
 
     AiModels.ProviderResult synthesize(AiModels.BusinessSynthesisRequest request);
 
+    AiModels.ProviderResult selectRestock(AiModels.RestockSelectionRequest request);
+
     String providerName();
 
     String configuredModel();

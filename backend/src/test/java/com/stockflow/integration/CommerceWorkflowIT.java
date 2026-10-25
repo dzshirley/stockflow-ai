@@ -19,11 +19,15 @@ import com.stockflow.product.ProductModels;
 import com.stockflow.product.ProductService;
 import com.stockflow.store.StoreContext;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,13 +41,16 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest(properties = "stockflow.orders.expiration-delay=PT24H")
 @Testcontainers
+@Timeout(30)
 class CommerceWorkflowIT {
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine")
             .withDatabaseName("stockflow_test")
             .withUsername("stockflow")
-            .withPassword("stockflow_test");
+            .withPassword("stockflow_test")
+            .withStartupTimeout(Duration.ofSeconds(30))
+            .withCommand("postgres", "-c", "lock_timeout=5s", "-c", "statement_timeout=30s");
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -116,12 +123,87 @@ class CommerceWorkflowIT {
             var second = executor.submit(reserve);
             start.countDown();
 
-            assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(true, false);
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
         }
 
         var balance = inventoryService.get(tenant, product.id());
         assertThat(balance.availableQuantity()).isZero();
         assertThat(balance.reservedQuantity()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentSameKeyOrderCreationCreatesOneOrderAndOneReservation() throws Exception {
+        var tenant = tenant("same-key-race@example.com", "Same key race");
+        var product = product(tenant, "SAME-KEY", 5);
+        var request = new OrderModels.CreateRequest(List.of(new OrderModels.LineRequest(product.id(), 1)));
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var create = (java.util.concurrent.Callable<UUID>) () -> {
+                start.await();
+                return orderService.create(tenant, "concurrent-same-key", request).id();
+            };
+            var first = executor.submit(create);
+            var second = executor.submit(create);
+            start.countDown();
+
+            assertThat(first.get(10, TimeUnit.SECONDS))
+                    .isEqualTo(second.get(10, TimeUnit.SECONDS));
+        }
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM orders", Long.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM order_idempotency_keys", Long.class)).isEqualTo(1);
+        var balance = inventoryService.get(tenant, product.id());
+        assertThat(balance.availableQuantity()).isEqualTo(4);
+        assertThat(balance.reservedQuantity()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentPaymentAndCancellationCommitExactlyOneTerminalOutcome() throws Exception {
+        var tenant = tenant("terminal-race@example.com", "Terminal race");
+        var product = product(tenant, "TERMINAL", 5);
+        var order = orderService.create(tenant, "terminal-race-key", new OrderModels.CreateRequest(
+                List.of(new OrderModels.LineRequest(product.id(), 2))));
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var payment = executor.submit(() -> {
+                start.await();
+                try {
+                    return orderService.payment(tenant, order.id(), OrderModels.PaymentOutcome.APPROVED)
+                            .status().name();
+                } catch (ApiException exception) {
+                    return exception.code();
+                }
+            });
+            var cancellation = executor.submit(() -> {
+                start.await();
+                try {
+                    return orderService.cancel(tenant, order.id()).status().name();
+                } catch (ApiException exception) {
+                    return exception.code();
+                }
+            });
+            start.countDown();
+
+            var results = List.of(
+                    payment.get(10, TimeUnit.SECONDS), cancellation.get(10, TimeUnit.SECONDS));
+            assertThat(results).contains("INVALID_ORDER_TRANSITION");
+            assertThat(results.stream().filter(value -> value.equals("PAID") || value.equals("CANCELLED")))
+                    .hasSize(1);
+        }
+
+        var finalOrder = orderService.get(tenant, order.id());
+        assertThat(finalOrder.status()).isIn(OrderStatus.PAID, OrderStatus.CANCELLED);
+        var balance = inventoryService.get(tenant, product.id());
+        assertThat(balance.reservedQuantity()).isZero();
+        assertThat(balance.availableQuantity())
+                .isEqualTo(finalOrder.status() == OrderStatus.PAID ? 3 : 5);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM outbox_events
+                WHERE aggregate_id = ? AND event_type IN ('ORDER_PAID', 'ORDER_CANCELLED')
+                """, Long.class, order.id())).isEqualTo(1);
     }
 
     @Test

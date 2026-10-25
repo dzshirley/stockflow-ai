@@ -23,6 +23,7 @@ class SpringAiProviderGateway implements AiProviderGateway {
     private final String configuredModel;
     private final String systemPrompt;
     private final String businessAnalysisPrompt;
+    private final String restockPrompt;
 
     SpringAiProviderGateway(
             ChatModel chatModel,
@@ -32,7 +33,8 @@ class SpringAiProviderGateway implements AiProviderGateway {
             AiConfiguration.AiResilienceProperties resilience,
             @Value("${spring.ai.openai.chat.model:gpt-4o-mini}") String configuredModel,
             @Value("classpath:prompts/ai-data-analyst-v1.txt") Resource promptResource,
-            @Value("classpath:prompts/business-analysis-v1.txt") Resource businessPromptResource) {
+            @Value("classpath:prompts/business-analysis-v1.txt") Resource businessPromptResource,
+            @Value("classpath:prompts/restock-selection-v1.txt") Resource restockPromptResource) {
         this.chatClient = ChatClient.builder(chatModel).build();
         this.tools = tools;
         this.costEstimator = costEstimator;
@@ -42,19 +44,29 @@ class SpringAiProviderGateway implements AiProviderGateway {
         try {
             this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
             this.businessAnalysisPrompt = businessPromptResource.getContentAsString(StandardCharsets.UTF_8);
+            this.restockPrompt = restockPromptResource.getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to load the versioned AI analyst prompt", exception);
         }
     }
 
     @Override
+    public AiModels.ProviderResult selectRestock(AiModels.RestockSelectionRequest request) {
+        return boundedSynthesis(restockPrompt, request.boundedCandidatesJson());
+    }
+
+    @Override
     public AiModels.ProviderResult synthesize(AiModels.BusinessSynthesisRequest request) {
+        return boundedSynthesis(businessAnalysisPrompt, request.evidenceBundleJson());
+    }
+
+    private AiModels.ProviderResult boundedSynthesis(String prompt, String content) {
         Duration delay = resilience.initialBackoff();
         for (int attempt = 1; attempt <= resilience.maxAttempts(); attempt++) {
             try {
                 var response = chatClient.prompt()
-                        .system(businessAnalysisPrompt)
-                        .user(request.evidenceBundleJson())
+                        .system(prompt)
+                        .user(content)
                         .call()
                         .chatResponse();
                 return providerResult(response);

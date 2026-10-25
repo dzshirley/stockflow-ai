@@ -32,6 +32,9 @@ public class InventoryAdjustment {
     @Column(name = "actor_user_id", nullable = false)
     private UUID actorUserId;
 
+    @Column(name = "operation_command_id")
+    private UUID operationCommandId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -47,6 +50,19 @@ public class InventoryAdjustment {
             String reason,
             UUID actorUserId,
             Instant createdAt) {
+        this(id, storeId, productId, availableDelta, reservedDelta, reason, actorUserId, null, createdAt);
+    }
+
+    public InventoryAdjustment(
+            UUID id,
+            UUID storeId,
+            UUID productId,
+            long availableDelta,
+            long reservedDelta,
+            String reason,
+            UUID actorUserId,
+            UUID operationCommandId,
+            Instant createdAt) {
         this.id = id;
         this.storeId = storeId;
         this.productId = productId;
@@ -54,6 +70,7 @@ public class InventoryAdjustment {
         this.reservedDelta = reservedDelta;
         this.reason = reason;
         this.actorUserId = actorUserId;
+        this.operationCommandId = operationCommandId;
         this.createdAt = createdAt;
     }
 
@@ -63,5 +80,6 @@ public class InventoryAdjustment {
     public long getReservedDelta() { return reservedDelta; }
     public String getReason() { return reason; }
     public UUID getActorUserId() { return actorUserId; }
+    public UUID getOperationCommandId() { return operationCommandId; }
     public Instant getCreatedAt() { return createdAt; }
 }

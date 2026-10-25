@@ -189,10 +189,146 @@ Verification on 2026-10-22: 112 non-billable backend tests passed, the one live 
 - Report creation is idempotent and failed provider calls leave explicit failed metadata without a fabricated document.
 - Report access always derives tenant and role from `StoreContext`; UI visibility is not an authorization control.
 - Scenarios are calculations with assumptions, never forecasts. Recommendations are advisory and require human approval.
-- Phase 7 operational proposal/execution behavior remains absent.
+- Phase 7 operational proposal/execution behavior is isolated from this Phase 6 report-generation contract.
 
-## Later milestones
+## Phase 7 preflight — restock proposal architecture
 
-- **Phase 7:** inventory-risk proposals, approval, revalidation, execution, and audit.
-- **Phase 8:** expanded reliability, E2E, concurrency, AI safety, performance, and observability.
-- **Phase 9:** production containers, cost-conscious AWS plan, CI/CD, portfolio narrative, and approved deployment.
+- [x] Review Phase 6 persistence, authorization, evidence, provider isolation, AI tool scope, and analytics correctness.
+- [x] Verify the current Git baseline and reconcile the earlier no-HEAD observation with the actual repository state.
+- [x] Define the proposal state machine, human approval boundary, freshness checks, idempotent execution, role authorization, audit, and failure recovery.
+- [x] Document required dependencies, non-goals, retrieval-driven indexes, API shape, and test strategy.
+- [x] Reconcile interrupted Phase 6 `PENDING`/`RUNNING` reports with ownership leases and bounded scheduled recovery.
+- [x] Validate relational report metadata against JSONB identity/ownership/version/period metadata on retrieval.
+- [x] Receive explicit authorization to begin Phase 7 implementation.
+
+## Phase 7 — AI Operations Agent and safe inventory execution
+
+- [x] Persist relational proposals, append-only transition events, and execution attempts through Flyway V8; add proposal-generation model telemetry through the additive Flyway V9 migration.
+- [x] Implement `PROPOSED → APPROVED → EXECUTING → EXECUTED` plus reject, cancel, stale, failed, and lease-recovery paths.
+- [x] Enforce creator-only STAFF visibility, store-wide ADMIN visibility, ADMIN-only approval/execution, and cross-store not-found behavior.
+- [x] Generate evidence-linked proposals from completed reports using a bounded provider selector and deterministic quantity calculation.
+- [x] Require explicit physical-receipt confirmation and revalidate report, evidence hash, product, inventory snapshot, analysis age, and current risk.
+- [x] Make receipt execution command-idempotent and atomically persist inventory, adjustment, proposal, audit, attempt, and outbox state.
+- [x] Add the connected React Operations workspace with generation, evidence, decisions, receipt confirmation, warnings, and history.
+- [x] Add migration, AI-output, state, authorization, freshness, idempotency, concurrency, audit, outbox, recovery, and frontend coverage.
+- [x] Verify Java 21 backend (185-test full gate plus 2 focused final acceptance tests; 1 live test skipped), frontend checks (41 tests), healthy Compose/Flyway V9, and 2 Playwright workflows.
+
+### Phase 7 implementation acceptance criteria
+
+- Approval and execution are separate server-authorized commands; neither the model nor UI visibility is an authorization boundary.
+- Every execution revalidates the exact approved proposal, current product/inventory version, report evidence, role, and freshness.
+- A replay or concurrent execution can produce at most one stock increment, inventory audit, proposal completion, and outbox event.
+- Successful inventory, proposal, audit, attempt, and outbox writes commit atomically; failures leave no partial operational effect.
+- Expired execution claims and failed attempts have bounded, observable recovery without infinite retry or blind side-effect repetition.
+- Phase 7 uses current deterministic inventory evidence only; historical forecasting and causal inference remain out of scope.
+
+Architecture and implemented invariants are documented in [phase7-architecture.md](phase7-architecture.md).
+
+### Phase 7 reliability review
+
+- [x] Bound the affected workflow tests and add delayed PostgreSQL blocker/wait
+  plus JVM thread diagnostics.
+- [x] Repeat the stale-inventory class under controlled conditions and document
+  that the earlier stall's root cause is not established from available evidence.
+- [x] Confirm the outbox currently has no relay/consumer and distinguish durable
+  transactional recording from future at-least-once delivery.
+- [x] Add route-level lazy loading and reduce the initial production JavaScript
+  from 777.47 kB/225.15 kB gzip to 257.19 kB/79.55 kB gzip.
+- [x] Strengthen opt-in live evaluation tool-argument and hard cost-limit checks
+  without executing the billable suite.
+
+Findings and priorities are documented in
+[phase7-reliability-review.md](phase7-reliability-review.md).
+
+## Phase 8 — Production hardening, reliability, performance, and security
+
+- [x] Add request correlation, safe structured completion logs, route/status
+  latency meters, and readiness-based Compose/CI checks.
+- [x] Add bounded login-failure throttling, HTTP body/header limits, expanded
+  operations MVC security checks, secret scanning, dependency audit, and
+  scheduled dependency updates.
+- [x] Add concurrent same-key order and payment/cancellation race tests;
+  repeatedly exercise stale restock validation with bounded waits.
+- [x] Investigate the earlier stale test stall without claiming an unproven
+  deadlock; preserve diagnostics and bound related PostgreSQL integration tests.
+- [x] Confirm that outbox events are atomic durable records only and defer a
+  relay/broker until a named consumer exists.
+- [x] Add a reproducible mixed k6 workload, capture endpoint p50/p95,
+  throughput/error rate, and inspect a representative PostgreSQL plan.
+- [x] Protect route-splitting gains with a production bundle budget and retain
+  the 257.19 kB initial entry.
+- [x] Add negative Playwright coverage for idempotency conflict, insufficient
+  stock, invalid transition, and cross-store isolation.
+- [x] Correct browser UUID generation for non-secure local origins and verify
+  all three real-stack workflows.
+- [x] Keep deterministic AI evaluation mandatory and live provider evaluation
+  disabled because no billable run was authorized.
+- [x] Harden CI with job timeouts, readiness checks, secret/dependency checks,
+  concurrency cancellation, and weekly Dependabot coverage.
+- [x] Publish Phase 8 performance, security, reliability, verification, and
+  engineering metrics documentation.
+
+### Phase 8 acceptance criteria
+
+- Business mutations retain server-side authorization, explicit approval where
+  consequential, transactionality, idempotency, and bounded concurrency tests.
+- AI/provider failure never gates product, inventory, order, or direct
+  analytics workflows; offline deterministic evaluation remains the CI gate.
+- Local measurements are reproducible and clearly separated from production
+  SLO/capacity claims.
+- Health, logs, correlation IDs, and metrics are useful without recording
+  credentials, prompt bodies, or business payloads.
+- Security findings and deployment limitations are severity-ranked and are not
+  presented as a penetration test or production approval.
+- No Phase 9 cloud deployment or paid provider evaluation is started.
+
+## Phase 9 — Cloud deployment, CI/CD, and portfolio launch
+
+### Stage A — Deployment preparation
+
+- [x] Compare three cost-conscious AWS hosting options and document the managed
+  S3/CloudFront + ECS/Fargate + private RDS recommendation and trade-offs.
+- [x] Publish an itemized, assumption-based $88–95/month cost estimate, charge
+  risks, budget alerts, stop/teardown guidance, and an explicit approval gate.
+- [x] Add a strict Spring `prod` profile, bounded database pool/timeouts,
+  graceful shutdown, secure cookies, proxy handling, hidden health details, and
+  server-side public-registration control.
+- [x] Prepare validated Terraform for private frontend/database origins, HTTPS,
+  ECS, RDS backups, ECR, least-privilege GitHub OIDC, logs, alarms, and budgets.
+- [x] Add manual, immutable-SHA release verification and deployment workflows;
+  do not deploy unreviewed changes or use long-lived AWS credentials.
+- [x] Add reproducible synthetic seed/bootstrap/workflow tools with mock AI and
+  no real customer, payment, supplier, credential, or document data.
+- [x] Harden frontend routing/cache/security headers and preserve the Phase 8
+  production bundle budgets.
+- [x] Create the cost, deployment, operations, demo, interview, resume, and
+  Stage A verification documentation and recruiter-oriented README.
+- [x] Capture local working-application screenshots from the verified synthetic
+  environment; do not present generated mockups as product evidence.
+- [x] Re-run Java 21/PostgreSQL, frontend, Compose, Playwright, Terraform,
+  workflow, script, container, and security checks and record exact evidence.
+
+### Stage A acceptance criteria
+
+- Infrastructure and delivery code can be inspected and validated locally
+  without AWS credentials, a paid provider, a public endpoint, or a domain.
+- Production defaults keep registration and paid AI disabled; PostgreSQL is
+  private in the proposed network and secrets remain runtime-only.
+- Monitoring covers availability, 5xx, latency, database pressure/storage,
+  report/receipt/provider failures, recovery signals, token/cost logs, and spend.
+- CI remains deterministic and non-billable; CD requires an explicit dispatch,
+  typed confirmation, protected environment approval, and reviewed full SHA.
+- Documentation distinguishes verified local behavior, prepared infrastructure,
+  estimated charges, and unverified live/cloud behavior.
+
+### Stage B — Approved deployment
+
+- [ ] Obtain explicit approval for the architecture, account, region, domain,
+  public exposure, $88–95/month estimate, budget, and retention policy.
+- [ ] Provision the reviewed resources, configure secrets/TLS, run migrations,
+  seed only synthetic data, and disable registration after controlled bootstrap.
+- [ ] Run the post-deployment smoke/security/E2E checklist and verify alarms,
+  logs, rollback, and database restore behavior with recorded evidence.
+- [ ] Add a live URL only after HTTPS and all applicable workflows pass.
+
+Stage B is intentionally not started by Stage A completion.

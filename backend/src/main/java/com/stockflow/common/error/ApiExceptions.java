@@ -26,4 +26,8 @@ public final class ApiExceptions {
     public static ApiException conflict(String code, String detail) {
         return new ApiException(HttpStatus.CONFLICT, code, detail);
     }
+
+    public static ApiException tooManyRequests(String code, String detail) {
+        return new ApiException(HttpStatus.TOO_MANY_REQUESTS, code, detail);
+    }
 }

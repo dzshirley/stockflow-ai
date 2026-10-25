@@ -53,6 +53,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .sidebar-user__identity small { margin-top: 3px; color: #879c90; font-size: 9px; text-transform: uppercase; letter-spacing: .11em; }
 .mobile-menu, .sidebar-scrim { display: none; }
 .workspace { min-width: 0; padding: 38px clamp(24px, 4vw, 64px) 72px; }
+.page-loading { min-height: 100vh; display: grid; place-items: center; color: var(--muted); background: var(--canvas); font-weight: 700; }
 
 /* Headers and typography */
 .page-header { margin-bottom: 32px; display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; }
@@ -304,6 +305,56 @@ tbody tr:hover { background: #fafcfa; }
 .status-badge--low_stock, .status-badge--payment_failed, .status-badge--out_of_stock, .status-badge--at_risk { background: #f9ddcf; color: #914638; }
 .status-badge--no_sales { background: #e7eef2; color: #4e6672; }
 .status-badge--cancelled, .status-badge--expired, .status-badge--archived { background: #e7e9e8; color: #68736d; }
+.status-badge--proposed { background: #e7eef2; color: #425f70; }
+.status-badge--approved { background: #fff0be; color: #795815; }
+.status-badge--executing { background: #dcecf3; color: #326176; }
+.status-badge--executed { background: #dff0d0; color: #426924; }
+.status-badge--rejected, .status-badge--stale, .status-badge--failed { background: #f9ddcf; color: #914638; }
+
+/* Restock operations */
+.operations-generator { margin-bottom: 18px; padding: 20px; display: grid; grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(180px, .8fr)); gap: 14px; align-items: end; }
+.operations-generator > div { grid-row: span 2; align-self: start; }
+.operations-generator h2 { margin: 6px 0; font: 400 23px/1.1 Georgia, serif; }
+.operations-generator p:not(.eyebrow) { max-width: 520px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.operations-generator label { color: #53655b; font-size: 9px; font-weight: 800; }
+.operations-generator label textarea, .operations-generator label select { margin-top: 6px; }
+.operations-generator label:has(textarea) { grid-column: 2 / 4; }
+.operations-generator > .button { grid-column: 3; }
+.operations-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+.operations-list { position: sticky; top: 22px; padding: 15px; display: grid; gap: 7px; }
+.operations-list-item { width: 100%; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid transparent; border-radius: 9px; background: #f7f9f7; color: inherit; text-align: left; cursor: pointer; }
+.operations-list-item--active { border-color: #8aa18f; background: #eef4ee; }
+.operations-list-item strong, .operations-list-item small { display: block; }
+.operations-list-item strong { font-size: 11px; }
+.operations-list-item small { margin-top: 4px; color: var(--muted); font-size: 8px; }
+.operations-detail { min-width: 0; display: grid; gap: 12px; }
+.proposal-hero { padding: 24px; display: flex; justify-content: space-between; gap: 25px; }
+.proposal-hero .eyebrow { margin-top: 15px; }
+.proposal-hero h2 { margin: 7px 0 10px; font: 400 29px/1.1 Georgia, serif; }
+.proposal-hero p:not(.eyebrow) { max-width: 650px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.proposal-numbers { min-width: 270px; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.proposal-numbers div { padding: 12px; border-radius: 8px; background: #f2f5f2; }
+.proposal-numbers dt { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.proposal-numbers dd { margin: 5px 0 0; font: 400 23px/1 Georgia, serif; }
+.proposal-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 12px; align-items: start; }
+.proposal-evidence, .proposal-actions, .proposal-history { padding: 20px; }
+.proposal-evidence h3, .proposal-actions h3, .proposal-history h3 { margin: 0 0 15px; font: 400 20px/1.1 Georgia, serif; }
+.proposal-evidence ul { padding-left: 18px; color: #53645a; font-size: 10px; line-height: 1.8; }
+.evidence-callout { padding: 15px; border-left: 3px solid #668956; border-radius: 7px; background: #f1f6f1; }
+.evidence-callout strong, .evidence-callout span { display: block; }
+.evidence-callout strong { font-size: 10px; text-transform: uppercase; }
+.evidence-callout span { margin: 5px 0; color: var(--muted); font: 8px/1.4 ui-monospace, monospace; }
+.evidence-callout p { margin: 0; font-size: 10px; }
+.proposal-actions { display: grid; gap: 10px; }
+.proposal-actions > p { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.proposal-actions label { font-size: 9px; font-weight: 800; }
+.proposal-actions input { margin-top: 6px; }
+.receipt-check { padding: 12px; display: flex; gap: 9px; border: 1px solid #dac881; border-radius: 8px; background: #fffaf0; line-height: 1.45; }
+.receipt-check input { width: auto; margin: 1px 0 0; }
+.proposal-history ol { margin: 0; padding: 0; display: grid; list-style: none; }
+.proposal-history li { padding: 11px 0; display: grid; grid-template-columns: 130px 1fr 1fr; gap: 12px; border-top: 1px solid var(--line); font-size: 9px; }
+.proposal-history li span, .proposal-history li small, .attempt-row span, .attempt-row small { color: var(--muted); }
+.attempt-row { margin-top: 8px; padding: 10px; display: flex; flex-wrap: wrap; gap: 10px; border-radius: 7px; background: #f5f7f5; font-size: 8px; }
 .pagination { margin-top: 17px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; color: var(--muted); font-size: 11px; }
 .inventory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .inventory-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
@@ -455,6 +506,11 @@ tbody tr:hover { background: #fafcfa; }
   .ai-history { max-height: 210px; overflow-y: auto; }
   .insights-layout { grid-template-columns: 1fr; }
   .insights-history { position: static; max-height: 230px; }
+  .operations-generator { grid-template-columns: 1fr 1fr; }
+  .operations-generator > div, .operations-generator label:has(textarea), .operations-generator > .button { grid-column: 1 / -1; grid-row: auto; }
+  .operations-layout { grid-template-columns: 1fr; }
+  .operations-list { position: static; max-height: 260px; overflow-y: auto; }
+  .proposal-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {
@@ -496,6 +552,10 @@ tbody tr:hover { background: #fafcfa; }
   .business-report__header { flex-direction: column; }
   .business-metrics, .scenario-grid { grid-template-columns: 1fr; }
   .insights-form-row { display: grid; grid-template-columns: 1fr; }
+  .operations-generator { grid-template-columns: 1fr; }
+  .proposal-hero { flex-direction: column; }
+  .proposal-numbers { min-width: 0; }
+  .proposal-history li { grid-template-columns: 1fr; gap: 4px; }
   .modal-backdrop { padding: 0; align-items: end; }
   .modal, .modal--wide { width: 100%; max-height: 92vh; border-radius: 15px 15px 0 0; }
 }

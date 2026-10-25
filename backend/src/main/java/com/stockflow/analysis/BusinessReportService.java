@@ -21,17 +21,23 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class BusinessReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(BusinessReportService.class);
     private static final Pattern PERCENT = Pattern.compile("(-?\\d+(?:\\.\\d+)?)\\s*%");
 
     private final BusinessAnalysisPlanner planner;
@@ -88,22 +94,29 @@ public class BusinessReportService {
             return get(context, started.reportId());
         }
 
+        var generationOwner = UUID.randomUUID();
         try {
-            persistence.markRunning(started.reportId());
+            persistence.markRunning(started.reportId(), generationOwner);
             var entity = persistence.get(context, started.reportId());
             var bundle = engine.analyze(context, request);
             String evidenceJson = write(assembler.synthesisBundle(type, bundle));
             var synthesis = ai.synthesize(evidenceJson);
-            var completedAt = Instant.now(clock);
+            // PostgreSQL TIMESTAMPTZ stores microseconds; normalize before duplicating timestamps into JSONB.
+            var completedAt = Instant.now(clock).truncatedTo(ChronoUnit.MICROS);
             var report = assembler.assemble(
                     started.reportId(), context, type, entity.getTitle(), bundle, synthesis,
                     entity.getCreatedAt(), completedAt);
-            persistence.complete(started.reportId(), write(report), report.modelMetadata(), report.dataAsOf());
+            persistence.complete(
+                    started.reportId(), generationOwner, write(report), report.modelMetadata(),
+                    report.dataAsOf(), report.completedAt());
             outcome = "completed";
             return get(context, started.reportId());
         } catch (RuntimeException exception) {
-            persistence.fail(started.reportId(), safeCode(exception));
-            meters.counter("stockflow.business_analysis.report.failures", "code", safeCode(exception)).increment();
+            String code = safeCode(exception);
+            persistence.fail(started.reportId(), generationOwner, code);
+            meters.counter("stockflow.business_analysis.report.failures", "code", code).increment();
+            log.warn("business_analysis_report_failed reportId={} storeId={} code={}",
+                    started.reportId(), context.storeId(), code);
             throw exception;
         } finally {
             timer.stop(meters.timer("stockflow.business_analysis.report.duration", "outcome", outcome));
@@ -117,12 +130,41 @@ public class BusinessReportService {
             try {
                 report = mapper.readValue(entity.getReportDocument(), BusinessAnalysisReport.class);
                 BusinessAnalysisValidator.validate(report);
+                validateRelationalConsistency(entity, report);
             } catch (JsonProcessingException | IllegalArgumentException exception) {
                 throw ApiExceptions.conflict(
                         "BUSINESS_REPORT_CORRUPT", "The persisted business report could not be validated");
             }
         }
         return new ReportDetail(persistence.summary(entity), report);
+    }
+
+    private void validateRelationalConsistency(BusinessReportEntity entity, BusinessAnalysisReport report) {
+        boolean matches = Objects.equals(entity.getId(), report.reportId())
+                && Objects.equals(entity.getStoreId(), report.storeId())
+                && Objects.equals(entity.getCreatedByUserId(), report.createdByUserId())
+                && entity.getAnalysisType() == report.reportType()
+                && Objects.equals(entity.getTitle(), report.title())
+                && entity.getStatus() == report.status()
+                && entity.getSchemaVersion() == report.schemaVersion()
+                && entity.getReportVersion() == report.reportVersion()
+                && Objects.equals(entity.getPeriodStart(), report.periodStart())
+                && Objects.equals(entity.getPeriodEndExclusive(), report.periodEndExclusive())
+                && Objects.equals(entity.getComparisonPeriodStart(), report.comparisonPeriodStart())
+                && Objects.equals(entity.getComparisonPeriodEndExclusive(), report.comparisonPeriodEndExclusive())
+                && Objects.equals(entity.getTimeZone(), report.timeZone())
+                && sameDatabaseInstant(entity.getDataAsOf(), report.dataAsOf())
+                && sameDatabaseInstant(entity.getCreatedAt(), report.createdAt())
+                && sameDatabaseInstant(entity.getCompletedAt(), report.completedAt());
+        if (!matches) {
+            throw new IllegalArgumentException("Report JSONB metadata does not match its relational record");
+        }
+    }
+
+    private boolean sameDatabaseInstant(Instant relational, Instant document) {
+        return relational == null
+                ? document == null
+                : document != null && Duration.between(relational, document).abs().compareTo(Duration.ofNanos(1_000)) < 0;
     }
 
     public ReportList list(

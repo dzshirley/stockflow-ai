@@ -85,28 +85,71 @@ class BusinessReportPersistenceService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void markRunning(UUID reportId) {
+    void markRunning(UUID reportId, UUID generationOwner) {
         var report = reports.findById(reportId).orElseThrow(() -> ApiExceptions.notFound("Business report"));
-        report.markRunning(Instant.now(clock));
+        var now = Instant.now(clock);
+        report.markRunning(generationOwner, now.plus(properties.generationLease()), now);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void complete(
             UUID reportId,
+            UUID generationOwner,
             String document,
             BusinessAnalysisReport.ModelMetadata model,
-            Instant dataAsOf) {
+            Instant dataAsOf,
+            Instant completedAt) {
         var report = reports.findById(reportId).orElseThrow(() -> ApiExceptions.notFound("Business report"));
-        report.complete(document, model, dataAsOf, Instant.now(clock));
+        try {
+            report.complete(generationOwner, document, model, dataAsOf, completedAt);
+        } catch (IllegalStateException exception) {
+            throw ApiExceptions.conflict("REPORT_GENERATION_STALE", exception.getMessage());
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void fail(UUID reportId, String code) {
+    void fail(UUID reportId, UUID generationOwner, String code) {
         reports.findById(reportId).ifPresent(report -> {
-            if (report.getStatus() != BusinessAnalysisReport.Status.COMPLETED) {
-                report.fail(code, Instant.now(clock));
+            if (report.getStatus() == BusinessAnalysisReport.Status.PENDING
+                    || report.getStatus() == BusinessAnalysisReport.Status.RUNNING) {
+                try {
+                    report.fail(generationOwner, code, Instant.now(clock));
+                } catch (IllegalStateException ignored) {
+                    // Recovery or another valid owner won the lifecycle race.
+                }
             }
         });
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    int reconcileExpired() {
+        var now = Instant.now(clock);
+        var pendingCutoff = now.minus(properties.generationLease());
+        return jdbc.update("""
+                WITH expired AS (
+                    SELECT id
+                    FROM business_analysis_reports
+                    WHERE (status = 'PENDING' AND updated_at <= ?)
+                       OR (status = 'RUNNING' AND generation_lease_until <= ?)
+                    ORDER BY updated_at, id
+                    LIMIT ?
+                    FOR UPDATE SKIP LOCKED
+                )
+                UPDATE business_analysis_reports report
+                SET status = 'FAILED',
+                    failure_code = 'REPORT_GENERATION_EXPIRED',
+                    generation_owner = NULL,
+                    generation_started_at = NULL,
+                    generation_lease_until = NULL,
+                    updated_at = ?,
+                    version = version + 1
+                FROM expired
+                WHERE report.id = expired.id
+                  AND ((report.status = 'PENDING' AND report.updated_at <= ?)
+                    OR (report.status = 'RUNNING' AND report.generation_lease_until <= ?))
+                """,
+                Timestamp.from(pendingCutoff), Timestamp.from(now), properties.recoveryBatchSize(),
+                Timestamp.from(now), Timestamp.from(pendingCutoff), Timestamp.from(now));
     }
 
     @Transactional(readOnly = true)

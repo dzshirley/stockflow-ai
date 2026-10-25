@@ -7,6 +7,12 @@ spring:
     password: ${POSTGRES_PASSWORD}
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:10000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+      keepalive-time: ${DB_KEEPALIVE_TIME:120000}
   jpa:
     open-in-view: false
     hibernate:
@@ -47,10 +53,26 @@ spring:
         on-limit-exceeded: THROW
 
 stockflow:
+  security:
+    login:
+      max-failures: ${LOGIN_MAX_FAILURES:5}
+      window: ${LOGIN_FAILURE_WINDOW:15m}
+      max-tracked-keys: ${LOGIN_MAX_TRACKED_KEYS:10000}
+    registration-enabled: ${REGISTRATION_ENABLED:true}
+  restock:
+    freshness-window: ${RESTOCK_FRESHNESS_WINDOW:24h}
+    execution-lease: ${RESTOCK_EXECUTION_LEASE:2m}
+    recovery-delay: ${RESTOCK_RECOVERY_DELAY:30s}
+    recovery-batch-size: ${RESTOCK_RECOVERY_BATCH_SIZE:100}
+    target-cover-days: ${RESTOCK_TARGET_COVER_DAYS:30}
+    max-quantity: ${RESTOCK_MAX_QUANTITY:1000000}
   business-analysis:
     retention-days: ${BUSINESS_ANALYSIS_RETENTION_DAYS:90}
     max-contribution-rows: ${BUSINESS_ANALYSIS_MAX_CONTRIBUTION_ROWS:50}
     prompt-version: ${BUSINESS_ANALYSIS_PROMPT_VERSION:business-analysis-v1}
+    generation-lease: ${BUSINESS_ANALYSIS_GENERATION_LEASE:2m}
+    recovery-delay: ${BUSINESS_ANALYSIS_RECOVERY_DELAY:30s}
+    recovery-batch-size: ${BUSINESS_ANALYSIS_RECOVERY_BATCH_SIZE:100}
   ai:
     provider: ${AI_PROVIDER:mock}
     max-question-length: ${AI_MAX_QUESTION_LENGTH:1000}
@@ -71,6 +93,11 @@ stockflow:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  max-http-request-header-size: ${MAX_HTTP_REQUEST_HEADER_SIZE:16KB}
+  tomcat:
+    connection-timeout: ${HTTP_CONNECTION_TIMEOUT:10s}
+    max-http-form-post-size: ${MAX_HTTP_FORM_POST_SIZE:1MB}
+    max-swallow-size: ${MAX_HTTP_SWALLOW_SIZE:1MB}
   servlet:
     session:
       cookie:
@@ -88,7 +115,8 @@ management:
     health:
       probes:
         enabled: true
+      show-details: never
 
 logging:
   pattern:
-    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level service=stockflow-api logger=%logger{36} message=%msg%n"
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level service=stockflow-api requestId=%X{requestId:-} logger=%logger{36} message=%msg%n"

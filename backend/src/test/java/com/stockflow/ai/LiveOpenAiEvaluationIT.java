@@ -51,7 +51,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class LiveOpenAiEvaluationIT {
 
     private static final int MAX_EVALUATION_TASKS = 3;
-    private static final int MAX_PROVIDER_TURNS = 15;
+    private static final int MAX_TOOL_CALLS_PER_TASK = 4;
+    private static final int MAX_PROVIDER_TURNS = MAX_EVALUATION_TASKS * (MAX_TOOL_CALLS_PER_TASK + 1);
+    private static final BigDecimal HARD_MAX_ESTIMATED_COST_USD = new BigDecimal("0.05");
 
     @Autowired AuthenticationService authenticationService;
     @Autowired ProductService productService;
@@ -66,6 +68,7 @@ class LiveOpenAiEvaluationIT {
         var observations = new ArrayList<Map<String, Object>>();
         String failure = null;
         try {
+            var costLimit = configuredCostLimit();
             var context = seedStore();
             var expected = analyticsService.getRevenueSummary(
                     context, AnalyticsModels.PeriodPreset.LAST_30_DAYS, null, null, false);
@@ -88,9 +91,30 @@ class LiveOpenAiEvaluationIT {
                     .isEqualByComparingTo(expected.metrics().revenue());
             assertThat(revenue.evidence()).extracting(AiModels.Evidence::toolName)
                     .contains(AnalyticsToolAdapter.REVENUE_COMPARISON);
-            assertThat(multiStep.evidence()).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(multiStep.evidence()).extracting(AiModels.Evidence::toolName)
+                    .contains(AnalyticsToolAdapter.REVENUE_COMPARISON, AnalyticsToolAdapter.TOP_PRODUCTS);
             assertThat(followUp.charts()).extracting(AiModels.Chart::id).contains("revenue-trend");
+            var revenueTools = toolMetadata(revenue);
+            var multiStepTools = toolMetadata(multiStep);
+            var followUpTools = toolMetadata(followUp);
+            assertThat(revenueTools.get(AnalyticsToolAdapter.REVENUE_COMPARISON))
+                    .containsEntry("preset", "LAST_30_DAYS")
+                    .containsEntry("comparePrevious", true);
+            assertThat(multiStepTools.get(AnalyticsToolAdapter.REVENUE_COMPARISON))
+                    .containsEntry("preset", "LAST_30_DAYS")
+                    .containsEntry("comparePrevious", true);
+            assertThat(multiStepTools.get(AnalyticsToolAdapter.TOP_PRODUCTS))
+                    .containsEntry("preset", "LAST_30_DAYS");
+            assertThat(((Number) multiStepTools.get(AnalyticsToolAdapter.TOP_PRODUCTS).get("limit")).intValue())
+                    .isBetween(1, 50);
+            assertThat(followUpTools.get(AnalyticsToolAdapter.REVENUE_TREND))
+                    .containsEntry("preset", "LAST_30_DAYS")
+                    .containsEntry("interval", "DAY");
             assertThat(observations).hasSize(MAX_EVALUATION_TASKS);
+            observations.add(Map.of("toolAudits", Map.of(
+                    "revenue", revenueTools,
+                    "multiStep", multiStepTools,
+                    "followUp", followUpTools)));
 
             var aggregate = jdbcTemplate.queryForMap("""
                     SELECT MAX(model) AS model,
@@ -101,20 +125,39 @@ class LiveOpenAiEvaluationIT {
                     WHERE store_id = ? AND status = 'SUCCEEDED'
                     """, context.storeId());
             var cost = new BigDecimal(aggregate.get("estimated_cost_usd").toString());
-            var limit = new BigDecimal(System.getenv().getOrDefault("AI_LIVE_MAX_COST_USD", "0.05"));
-            assertThat(cost).isLessThanOrEqualTo(limit);
+            assertThat(cost).isLessThanOrEqualTo(costLimit);
             observations.add(Map.of(
                     "model", String.valueOf(aggregate.get("model")),
                     "totalTokens", aggregate.get("total_tokens"),
                     "toolCalls", aggregate.get("tool_calls"),
                     "estimatedCostUsd", cost,
-                    "costLimitUsd", limit));
+                    "costLimitUsd", costLimit));
         } catch (RuntimeException | AssertionError exception) {
             failure = exception.getClass().getSimpleName() + ": " + exception.getMessage();
             throw exception;
         } finally {
             writeResult(observations, failure);
         }
+    }
+
+    private BigDecimal configuredCostLimit() {
+        var configured = new BigDecimal(System.getenv().getOrDefault(
+                "AI_LIVE_MAX_COST_USD", HARD_MAX_ESTIMATED_COST_USD.toPlainString()));
+        assertThat(configured).isPositive().isLessThanOrEqualTo(HARD_MAX_ESTIMATED_COST_USD);
+        return configured;
+    }
+
+    private Map<String, Map<String, Object>> toolMetadata(AiModels.AiResponse response) throws Exception {
+        var result = new LinkedHashMap<String, Map<String, Object>>();
+        for (var evidence : response.evidence()) {
+            String metadata = jdbcTemplate.queryForObject(
+                    "SELECT input_metadata FROM ai_tool_executions WHERE id = ?",
+                    String.class, evidence.toolExecutionId());
+            @SuppressWarnings("unchecked")
+            var parsed = (Map<String, Object>) objectMapper.readValue(metadata, Map.class);
+            result.put(evidence.toolName(), parsed);
+        }
+        return result;
     }
 
     private StoreContext seedStore() {

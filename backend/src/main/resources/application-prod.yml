@@ -1,0 +1,45 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${POSTGRES_DB}?sslmode=${DB_SSL_MODE:require}&connectTimeout=10&socketTimeout=30&tcpKeepAlive=true
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:8}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:10000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_MAX_LIFETIME:1500000}
+      keepalive-time: ${DB_KEEPALIVE_TIME:120000}
+  flyway:
+    enabled: true
+    clean-disabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
+
+server:
+  forward-headers-strategy: framework
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax
+  tomcat:
+    connection-timeout: ${HTTP_CONNECTION_TIMEOUT:10s}
+
+stockflow:
+  security:
+    registration-enabled: ${REGISTRATION_ENABLED:false}
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.web: INFO

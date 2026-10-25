@@ -162,7 +162,7 @@ class BusinessReportAssembler {
         var inventoryEvidence = inventoryEvidence(bundle, evidence, completedAt);
         var inventoryPoints = addInventoryFindings(bundle, evidence, findings);
         var hypotheses = hypotheses(
-                synthesis.hypothesisCodes(), inventoryEvidence.risk(), previousRevenueEvidence, currentRevenueEvidence);
+                synthesis.hypothesisCodes(), inventoryEvidence.risks(), previousRevenueEvidence, currentRevenueEvidence);
         var recommendations = recommendations(
                 synthesis.recommendationCodes(), bundle, findings, hypotheses,
                 currentRevenueEvidence, inventoryEvidence);
@@ -254,7 +254,7 @@ class BusinessReportAssembler {
 
     private InventoryEvidence inventoryEvidence(
             AnalysisBundle bundle, List<EvidenceReference> evidence, Instant observedAt) {
-        EvidenceReference riskRepresentative = null;
+        var risks = new ArrayList<EvidenceReference>();
         EvidenceReference excessRepresentative = null;
         int limit = Math.min(properties.maxContributionRows(), bundle.inventoryDiagnostics().size());
         for (var diagnostic : bundle.inventoryDiagnostics().subList(0, limit)) {
@@ -270,11 +270,11 @@ class BusinessReportAssembler {
                     bundle.revenue().currentPeriod().startDate(), bundle.revenue().currentPeriod().endDateExclusive(),
                     bundle.revenue().currentPeriod().timeZone(), filters, observedAt);
             evidence.add(item);
-            if (riskRepresentative == null && !diagnostic.riskLevel().equals("HEALTHY")
-                    && !diagnostic.riskLevel().equals("NO_SALES")) riskRepresentative = item;
+            if (!diagnostic.riskLevel().equals("HEALTHY")
+                    && !diagnostic.riskLevel().equals("NO_SALES")) risks.add(item);
             if (excessRepresentative == null && diagnostic.excessInventory()) excessRepresentative = item;
         }
-        return new InventoryEvidence(riskRepresentative, excessRepresentative);
+        return new InventoryEvidence(List.copyOf(risks), excessRepresentative);
     }
 
     private List<BusinessChart.Point> addInventoryFindings(
@@ -307,17 +307,17 @@ class BusinessReportAssembler {
 
     private List<BusinessHypothesis> hypotheses(
             List<HypothesisCode> codes,
-            EvidenceReference inventory,
+            List<EvidenceReference> inventory,
             EvidenceReference previousRevenue,
             EvidenceReference currentRevenue) {
         var result = new ArrayList<BusinessHypothesis>();
         for (var code : codes) {
             switch (code) {
                 case INVENTORY_AVAILABILITY_MAY_CONTRIBUTE -> {
-                    if (inventory != null) result.add(new BusinessHypothesis(
+                    if (!inventory.isEmpty()) result.add(new BusinessHypothesis(
                             UUID.randomUUID(), "Limited current inventory may be associated with observed sales performance.",
                             "At least one current inventory item is at risk, but historical stockout duration is unavailable.",
-                            List.of(inventory.id(), currentRevenue.id()), List.of(),
+                            List.of(inventory.getFirst().id(), currentRevenue.id()), List.of(),
                             BusinessHypothesis.Status.UNTESTED,
                             "Capture inventory snapshots and compare stockout intervals with product sales over time."));
                 }
@@ -352,14 +352,15 @@ class BusinessReportAssembler {
                         List.of("Short periods may amplify one-off orders."),
                         List.of("Review the contribution charts", "Compare affected SKUs with operational context"), true));
                 case REVIEW_INVENTORY_RISK -> {
-                    if (inventoryEvidence.risk() != null) {
+                    if (!inventoryEvidence.risks().isEmpty()) {
                         result.add(new Recommendation(
                                 UUID.randomUUID(), "Review inventory risk for affected products",
                                 "Check replenishment timing and current availability for at-risk SKUs.",
                                 "Current inventory risk is verified, while any effect on historical sales remains a hypothesis.",
                                 findings.stream().map(BusinessFinding::id).toList(),
                                 hypotheses.stream().map(BusinessHypothesis::id).toList(),
-                                List.of(inventoryEvidence.risk().id()), Priority.HIGH, null, null,
+                                inventoryEvidence.risks().stream().map(EvidenceReference::id).toList(),
+                                Priority.HIGH, null, null,
                                 List.of("Current balances are up to date."),
                                 List.of("Replenishment without demand validation can create excess stock."),
                                 List.of("Confirm supplier lead time", "Review current reservations", "Monitor sales velocity"), true));
@@ -452,6 +453,6 @@ class BusinessReportAssembler {
         return Priority.LOW;
     }
 
-    private record InventoryEvidence(EvidenceReference risk, EvidenceReference excess) {
+    private record InventoryEvidence(List<EvidenceReference> risks, EvidenceReference excess) {
     }
 }

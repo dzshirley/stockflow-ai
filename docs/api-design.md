@@ -83,6 +83,27 @@ All report operations require an authenticated session. Create requires CSRF and
 
 Supported persisted types are `REVENUE_INVESTIGATION`, `INVENTORY_RISK`, and `SCENARIO_ANALYSIS`. Scenario percentages are bounded from -90 through 1000. A provider/validation failure returns a safe error and leaves a `FAILED` report with `report=null`; completed reports include schema/report version, periods, freshness, metrics, evidence, findings, hypotheses, recommendations, scenarios, charts, limitations, and model metadata. Retrying a key with a different request returns `409 REPORT_IDEMPOTENCY_CONFLICT`.
 
+## Implemented Phase 7 restock-operations surface
+
+Every lookup derives store, user, and role from the authenticated session.
+STAFF sees only proposals they created; ADMIN sees every proposal in the store.
+Only ADMIN can approve, reject, or execute. Foreign IDs return 404.
+
+| Endpoint | Result | Limits / behavior |
+|---|---|---|
+| `POST /restock-proposals/generate` | One or more evidence-linked `PROPOSED` records | CSRF and `Idempotency-Key`; question, source report ID, recommendation ID |
+| `GET /restock-proposals?limit=50` | Authorized proposal list | `limit` 1–100 |
+| `GET /restock-proposals/{id}` | Proposal detail and captured inventory snapshot | ADMIN store-wide; STAFF creator-only |
+| `POST /restock-proposals/{id}/approve` | `PROPOSED → APPROVED` | ADMIN and exact `expectedVersion`; no inventory effect |
+| `POST /restock-proposals/{id}/reject` | `PROPOSED → REJECTED` | ADMIN; bounded optional reason |
+| `POST /restock-proposals/{id}/cancel` | `PROPOSED/APPROVED → CANCELLED` | Creator may cancel proposed; ADMIN may cancel before execution |
+| `POST /restock-proposals/{id}/execute` | Records physically received stock | ADMIN, UUID idempotency key, exact version, `received=true` |
+| `GET /restock-proposals/{id}/history` | Transition events and execution attempts | Same visibility as proposal detail |
+
+Stale execution returns a stable 409 code and persists `STALE`. Replaying the
+same successful command ID returns its result and never increments inventory a
+second time.
+
 ### Phase 3 browser integration
 
 - The SPA defaults to same-origin `/api` requests so development and production proxies preserve session-cookie behavior. `VITE_API_BASE_URL` may provide a non-secret build-time base URL.
@@ -107,12 +128,6 @@ Supported persisted types are `REVENUE_INVESTIGATION`, `INVENTORY_RISK`, and `SC
 - Cancellation and scheduled expiration release units and transition to `CANCELLED` or `EXPIRED`.
 - Repeating the same terminal command/outcome is idempotent. Conflicting terminal transitions return `409 INVALID_ORDER_TRANSITION`.
 - Reusing an idempotency key with a different canonical item payload returns `409 IDEMPOTENCY_KEY_REUSED`.
-
-## Planned later resource surface
-
-| Area | Representative endpoints | Notes |
-|---|---|---|
-| Proposals | `GET /proposals`, `POST /proposals/{id}/approve`, `/reject`, `/execute` | Explicit transition and audit rules |
 
 ## Compatibility policy
 

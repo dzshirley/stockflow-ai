@@ -69,4 +69,9 @@ AI_LIVE_MAX_COST_USD='0.05' \
 ./mvnw -Dit.test=LiveOpenAiEvaluationIT verify
 ```
 
-The suite seeds an isolated H2 tenant and runs exactly three top-level evaluation tasks. Live-evaluation retries are disabled; each task is capped at four tool calls and each provider turn at 300 output tokens, giving a conservative maximum of 15 provider turns across the suite. It compares returned revenue with the deterministic analytics service, checks a multi-tool question and contextual follow-up, and enforces the configured estimated-cost ceiling after the bounded run. It writes sanitized provider/model, latency, token, tool, estimated-cost, success, and failure data to `backend/target/live-ai-evaluation.json`. It never writes a key or prompt. The file is evidence from that particular model/version and time, not a general correctness score.
+The suite seeds an isolated H2 tenant and runs exactly three top-level evaluation tasks. Live-evaluation retries are disabled; each task is capped at four tool calls and each provider turn at 300 output tokens, giving a conservative maximum of 15 provider turns across the suite. It compares returned revenue with the deterministic analytics service, checks exact persisted tool names and normalized arguments for a multi-tool question and contextual follow-up, and enforces the configured estimated-cost ceiling. USD 0.05 is a hard ceiling; configuration may lower but cannot raise it, and invalid limits fail before the first provider request. It writes sanitized provider/model, latency, token, tool, argument audit, estimated-cost, success, and failure data to `backend/target/live-ai-evaluation.json`. It never writes a key or prompt. The file is evidence from that particular model/version and time, not a general correctness score, and estimated cost is not actual billing.
+
+Phase 8 reran the mandatory deterministic and fault suites through the clean
+Maven gate and did not enable `RUN_LIVE_AI_EVAL`. No paid request was made.
+Real-provider model adherence, provider-side billing, and live network behavior
+remain unverified.

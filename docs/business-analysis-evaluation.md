@@ -30,3 +30,7 @@ No live-provider evaluation was executed. Real model routing, structured-output 
 ## Live-provider boundary
 
 The Phase 5.5 opt-in live suite remains disabled unless `RUN_LIVE_AI_EVAL=true` and a user explicitly approves billable execution. Phase 6 does not weaken its request, token, or estimated-cost caps. Offline success must not be interpreted as proof that a real provider always selects valid codes or follows the prompt.
+
+Phase 8 did not run a billable provider. Deterministic business-analysis and
+restock-selection behavior remains the required CI baseline; real-provider
+structured selection and recommendation-code adherence remain unverified.

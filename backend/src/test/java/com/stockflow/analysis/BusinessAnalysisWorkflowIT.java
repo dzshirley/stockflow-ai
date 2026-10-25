@@ -13,11 +13,16 @@ import com.stockflow.product.ProductService;
 import com.stockflow.store.StoreContext;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,13 +34,17 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest
 @Testcontainers
+@Timeout(30)
 class BusinessAnalysisWorkflowIT {
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine")
             .withDatabaseName("stockflow_analysis_test")
             .withUsername("stockflow")
-            .withPassword("stockflow_test");
+            .withPassword("stockflow_test")
+            .withStartupTimeout(Duration.ofSeconds(30))
+            .withCommand("postgres", "-c", "lock_timeout=5s", "-c", "statement_timeout=30s",
+                    "-c", "deadlock_timeout=1s", "-c", "log_lock_waits=on");
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -44,12 +53,15 @@ class BusinessAnalysisWorkflowIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("stockflow.scheduling.enabled", () -> "false");
     }
 
     @Autowired AuthenticationService authenticationService;
     @Autowired ProductService productService;
     @Autowired OrderService orderService;
     @Autowired BusinessReportService reports;
+    @Autowired BusinessReportPersistenceService persistence;
+    @Autowired BusinessReportRecoveryService recovery;
     @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
@@ -164,6 +176,107 @@ class BusinessAnalysisWorkflowIT {
                     assertThat(scenario.changePercent()).isEqualByComparingTo("-10.00");
                     assertThat(scenario.modeledValue()).isEqualByComparingTo("45.0000");
                 });
+    }
+
+    @Test
+    void reconcilesCrashedPendingAndTimedOutRunningReportsWithoutTouchingAnActiveLease() {
+        var admin = tenant("report-recovery@example.com", "Recovery Store");
+        var pending = begin(admin, "crashed-pending");
+        var expiredRunning = begin(admin, "expired-running");
+        var activeRunning = begin(admin, "active-running");
+        var expiredOwner = UUID.randomUUID();
+        persistence.markRunning(expiredRunning, expiredOwner);
+        persistence.markRunning(activeRunning, UUID.randomUUID());
+        jdbc.update("UPDATE business_analysis_reports SET updated_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id = ?", pending);
+        jdbc.update("""
+                UPDATE business_analysis_reports
+                SET generation_started_at = CURRENT_TIMESTAMP - INTERVAL '3 minutes',
+                    generation_lease_until = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+                WHERE id = ?
+                """, expiredRunning);
+
+        assertThat(recovery.reconcileExpiredReports()).isEqualTo(2);
+
+        assertThat(status(pending)).isEqualTo("FAILED");
+        assertThat(status(expiredRunning)).isEqualTo("FAILED");
+        assertThat(status(activeRunning)).isEqualTo("RUNNING");
+        assertThat(jdbc.queryForObject(
+                "SELECT failure_code FROM business_analysis_reports WHERE id = ?", String.class, pending))
+                .isEqualTo("REPORT_GENERATION_EXPIRED");
+        var staleCompletionTime = Instant.now();
+        assertThatThrownBy(() -> persistence.complete(
+                expiredRunning,
+                expiredOwner,
+                "{}",
+                new BusinessAnalysisReport.ModelMetadata(
+                        "mock", "deterministic-v1", "business-analysis-v1",
+                        null, null, null, null, null, 0),
+                staleCompletionTime,
+                staleCompletionTime))
+                .isInstanceOf(ApiException.class)
+                .extracting(exception -> ((ApiException) exception).code())
+                .isEqualTo("REPORT_GENERATION_STALE");
+        assertThat(jdbc.queryForObject(
+                "SELECT failure_code FROM business_analysis_reports WHERE id = ?", String.class, expiredRunning))
+                .isEqualTo("REPORT_GENERATION_EXPIRED");
+    }
+
+    @Test
+    void concurrentRecoveryClaimsAnExpiredReportOnlyOnce() throws Exception {
+        var admin = tenant("report-recovery-race@example.com", "Recovery Race Store");
+        var pending = begin(admin, "concurrent-pending");
+        jdbc.update("UPDATE business_analysis_reports SET updated_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes' WHERE id = ?", pending);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(recovery::reconcileExpiredReports);
+            var second = executor.submit(recovery::reconcileExpiredReports);
+            assertThat(first.get(10, TimeUnit.SECONDS) + second.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+        }
+
+        assertThat(status(pending)).isEqualTo("FAILED");
+    }
+
+    @Test
+    void rejectsAValidJsonDocumentWhoseOwnershipMetadataDoesNotMatchTheAuthorizedRow() {
+        var admin = tenant("report-integrity@example.com", "Integrity Store");
+        var other = tenant("report-integrity-other@example.com", "Other Integrity Store");
+        var created = reports.create(admin, "integrity-report", request("Why did revenue change?"));
+        jdbc.update("""
+                UPDATE business_analysis_reports
+                SET report_document = jsonb_set(
+                    report_document,
+                    '{storeId}',
+                    CAST(('"' || CAST(? AS text) || '"') AS jsonb))
+                WHERE id = ?
+                """, other.storeId(), created.metadata().id());
+
+        assertThatThrownBy(() -> reports.get(admin, created.metadata().id()))
+                .isInstanceOf(ApiException.class)
+                .extracting(exception -> ((ApiException) exception).code())
+                .isEqualTo("BUSINESS_REPORT_CORRUPT");
+        assertThatThrownBy(() -> reports.get(other, created.metadata().id()))
+                .isInstanceOf(ApiException.class)
+                .extracting(exception -> ((ApiException) exception).status().value())
+                .isEqualTo(404);
+    }
+
+    private UUID begin(StoreContext context, String key) {
+        return persistence.begin(
+                context,
+                key,
+                "0".repeat(64),
+                BusinessAnalysisModels.AnalysisType.INVENTORY_RISK,
+                "Inventory risk",
+                LocalDate.of(2026, 9, 1),
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 9, 1),
+                "America/New_York").reportId();
+    }
+
+    private String status(UUID reportId) {
+        return jdbc.queryForObject(
+                "SELECT status FROM business_analysis_reports WHERE id = ?", String.class, reportId);
     }
 
     private void seedComparison(StoreContext context) {
