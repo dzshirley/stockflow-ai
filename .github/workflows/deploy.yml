@@ -58,7 +58,7 @@ jobs:
           REQUESTED_REF: ${{ inputs.git_ref }}
         run: |
           test "$(git rev-parse HEAD)" = "$REQUESTED_REF"
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.25.0
       - uses: actions/setup-node@v5
