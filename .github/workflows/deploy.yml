@@ -49,7 +49,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ inputs.git_ref }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git_ref }}
       - name: Require immutable checked-out commit
