@@ -21,10 +21,13 @@ authenticated ADMIN must approve and explicitly confirm any inventory receipt.
 - PostgreSQL row locking, deterministic lock order, conditional inventory
   updates, transaction rollback, and idempotency prevent overselling and
   duplicate order/receipt effects.
-- Local mixed workload: **225.07 requests/second**, 0% errors, **4.32 ms p50,
-  26.74 ms p95, and 83.22 ms p99** under the documented five-VU profile.
+- Local mixed workload: **4,316 HTTP requests** at **225.07 requests/second**,
+  0% errors, **4.32 ms p50, 26.74 ms p95, and 83.22 ms p99** under the
+  documented five-VU profile. These are local workstation/Docker results, not
+  production cloud measurements.
 - Route splitting reduced initial production JavaScript from **777.47 kB to
-  257.19 kB minified**; automated budgets prevent regression.
+  257.19 kB minified**, a **66.9% reduction**; automated budgets prevent
+  regression.
 - AWS deployment, OIDC CD, monitoring, synthetic demo bootstrap, and teardown
   are prepared as code but **no public environment has been provisioned**.
 
@@ -54,20 +57,33 @@ See [verified engineering metrics](docs/engineering-metrics.md), the
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Browser["React 19 + TypeScript SPA"] -->|same-origin REST + CSRF| API["Java 21 / Spring Boot modular monolith"]
-    API -->|JPA + bounded SQL| DB[("PostgreSQL 18")]
-    API -->|same transaction| Outbox["Durable outbox rows"]
-    API -->|typed bounded tools| Provider["Mock or optional OpenAI provider"]
-    Provider --> API
-    Human["ADMIN approval + receipt confirmation"] --> API
+flowchart TB
+    User["Authenticated user"] --> SPA["React 19 + TypeScript SPA"]
+    SPA -->|same-origin REST + CSRF| Auth["Authentication + ADMIN/STAFF RBAC"]
 
-    subgraph Prepared AWS Stage A
-      CF["CloudFront"] --> S3["Private S3 frontend"]
-      CF --> ALB["HTTPS ALB"]
-      ALB --> ECS["ECS/Fargate backend"]
-      ECS --> RDS[("Private RDS PostgreSQL")]
+    subgraph API["Java 21 / Spring Boot REST API — modular monolith"]
+      Auth --> Commerce["Commerce services<br/>catalog · inventory · orders"]
+      Auth --> Analytics["Deterministic analytics engine"]
+      Auth --> DataAI["AI Data Analyst<br/>8 bounded read-only tools"]
+      Auth --> BusinessAI["AI Business Analyst<br/>evidence-backed reports"]
+      Auth --> OpsAI["AI Operations Agent<br/>read-only proposal selection"]
+      DataAI --> Analytics
+      BusinessAI --> Analytics
+      OpsAI --> BusinessAI
+      OpsAI --> Proposal["Reviewable restock proposal"]
+      Proposal --> Approval["Explicit ADMIN approval<br/>+ physical receipt confirmation"]
+      Approval --> Execution["Revalidated, idempotent<br/>inventory execution"]
+      Execution --> Commerce
     end
+
+    Commerce -->|transactions + row locks| DB[("PostgreSQL 18")]
+    Analytics -->|bounded SQL| DB
+    BusinessAI -->|versioned JSONB report| DB
+    OpsAI -->|proposal + audit lifecycle| DB
+    Commerce -->|same transaction| Outbox["Durable outbox rows<br/>(no relay/consumer yet)"]
+    Provider["Deterministic mock or<br/>optional OpenAI provider"] -->|bounded selections only| DataAI
+    Provider -->|allow-listed synthesis codes| BusinessAI
+    Provider -->|authorized candidate IDs only| OpsAI
 ```
 
 The backend is a package-by-feature modular monolith. Controllers validate API
@@ -95,6 +111,21 @@ synthetic data, not generated mockups.
 | ![StockFlow AI Copilot](docs/screenshots/ai-copilot.png) | ![StockFlow Business Insights](docs/screenshots/business-insights.png) |
 | Operations proposals | |
 | ![StockFlow Operations proposals](docs/screenshots/operations.png) | |
+
+## 2–3 minute demo walkthrough
+
+1. Open **Dashboard**, **Inventory**, and **Orders** to show live store-scoped
+   metrics, stock reservations, immutable order snapshots, and audit history.
+2. Open **Analytics** to show deterministic revenue, order, product, and
+   inventory-risk calculations sourced from paid-order snapshots.
+3. Ask the **AI assistant** for 30-day revenue, then open **Business insights**
+   to trace the response and a saved report back to typed evidence.
+4. Open **Restock operations** to review a proposal. Explain that proposal,
+   ADMIN approval, and physical-receipt execution are separate steps; execution
+   revalidates evidence and inventory before an atomic, idempotent stock change.
+
+Use only the synthetic `DEMO-*` workspace. The complete narration and expected
+questions are in the [portfolio demo script](docs/demo-script.md).
 
 ## Technical stack
 
@@ -173,6 +204,8 @@ certification. See [security review](docs/security-review.md) and
 [cloud architecture](docs/cloud-architecture.md).
 
 ## Deployment status
+
+**Prepared AWS Deployment Architecture — Not Yet Deployed**
 
 Phase 9 Stage A is prepared: production profiles, private-network Terraform,
 OIDC/manual CD, budgets, alarms, backup/rollback instructions, synthetic demo
